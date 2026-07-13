@@ -167,6 +167,14 @@ p { color: var(--muted); line-height: 1.55; }
 .scan-progress strong { font-size: 12px; }
 .scan-progress span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .scan-progress progress { width: 100%; height: 5px; overflow: hidden; border: 0; border-radius: 3px; accent-color: var(--accent); }
+.runtime-package { min-height: 78px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); background: var(--surface); }
+.runtime-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 6px; color: var(--accent-strong); background: var(--input); }
+.runtime-copy { min-width: 0; display: grid; gap: 4px; }
+.runtime-copy > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.runtime-copy strong { font-size: 12px; }
+.runtime-copy p { color: var(--muted); font-size: 10px; }
+.runtime-copy small { overflow: hidden; color: var(--danger); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-actions { display: flex; align-items: center; gap: 7px; }
 .library-summary { min-height: 72px; display: grid; grid-template-columns: 105px 105px 135px minmax(240px, 1fr); align-items: center; border-bottom: 1px solid var(--border-soft); }
 .library-summary > div { min-width: 0; display: grid; gap: 3px; padding: 0 18px; border-right: 1px solid var(--border-soft); }
 .library-summary span { color: var(--subtle); font-size: 9px; font-weight: 700; text-transform: uppercase; }
@@ -195,6 +203,7 @@ p { color: var(--muted); line-height: 1.55; }
 .model-state { display: inline-flex; padding: 4px 6px; border-radius: 4px; font-size: 9px; font-weight: 700; }
 .model-state.ready { color: var(--accent-strong); background: var(--accent-soft); }
 .model-state.metadata_pending { color: var(--muted); background: var(--surface-hover); }
+.model-state.installing { color: var(--muted); background: var(--surface-hover); }
 .model-state.invalid { color: var(--danger); background: rgba(225,111,116,.08); }
 .model-state.missing { color: var(--amber); background: rgba(228,170,87,.08); }
 .row-actions { display: flex; justify-content: flex-end; gap: 6px; }
@@ -255,6 +264,9 @@ p { color: var(--muted); line-height: 1.55; }
   .error-banner, .warning-banner, .notice-banner, .security-note, .scan-progress { margin-right: 14px; margin-left: 14px; }
   .scan-progress { grid-template-columns: auto minmax(0, 1fr); }
   .scan-progress .secondary-button { grid-column: 1 / -1; }
+  .runtime-package { grid-template-columns: 36px minmax(0, 1fr); padding: 12px 14px; }
+  .runtime-actions { grid-column: 1 / -1; }
+  .runtime-actions .secondary-button, .runtime-actions .primary-button { flex: 1; }
   .hardware-grid { grid-template-columns: 1fr; padding: 14px; }
   .capability-table-wrap { margin: 0 14px 18px; overflow-x: auto; }
   .capability-table { min-width: 560px; }

@@ -1,5 +1,6 @@
 mod app_state;
 mod commands;
+mod engine_packages;
 mod engines;
 mod errors;
 mod events;
@@ -32,6 +33,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_commands::get_app_snapshot,
+            commands::engine_package_commands::list_engine_packages,
+            commands::engine_package_commands::install_engine_package,
+            commands::engine_package_commands::import_engine_package,
+            commands::engine_package_commands::verify_engine_package,
+            commands::engine_package_commands::uninstall_engine_package,
             commands::hardware_commands::get_hardware_snapshot,
             commands::hardware_commands::refresh_hardware,
             commands::model_commands::list_models,

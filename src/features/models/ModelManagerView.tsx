@@ -3,16 +3,21 @@ import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
+  Cpu,
+  Download,
+  FileArchive,
   FilePlus2,
   FolderSearch,
   LoaderCircle,
   RefreshCw,
   Search,
+  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
 import { bridge } from "../../services/bridge";
 import type {
+  EnginePackageStatus,
   ModelRecord,
   ModelScanProgress,
   ModelScanSummary,
@@ -30,10 +35,12 @@ const stateLabels: Record<ModelVerificationState, string> = {
 
 export function ModelManagerView() {
   const [models, setModels] = useState<ModelRecord[]>([]);
+  const [enginePackages, setEnginePackages] = useState<EnginePackageStatus[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState<"import" | "scan" | null>(null);
   const [workingModelId, setWorkingModelId] = useState<string | null>(null);
+  const [runtimeOperation, setRuntimeOperation] = useState<"download" | "import" | "verify" | "uninstall" | null>(null);
   const [progress, setProgress] = useState<ModelScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -49,7 +56,18 @@ export function ModelManagerView() {
     }
   }, []);
 
-  useEffect(() => { void loadModels(); }, [loadModels]);
+  const loadEnginePackages = useCallback(async () => {
+    try {
+      setEnginePackages(await bridge.listEnginePackages());
+    } catch (caught) {
+      setError(errorMessage(caught, "The engine package status could not be loaded."));
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadModels();
+    void loadEnginePackages();
+  }, [loadEnginePackages, loadModels]);
 
   const filteredModels = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -147,6 +165,66 @@ export function ModelManagerView() {
     }
   }
 
+  async function downloadRuntime(packageStatus: EnginePackageStatus) {
+    clearMessages();
+    setRuntimeOperation("download");
+    try {
+      const installed = await bridge.installEnginePackage(packageStatus.manifest.id);
+      await loadEnginePackages();
+      setNotice(`llama.cpp ${installed.version} CPU runtime installed and verified.`);
+    } catch (caught) {
+      setError(errorMessage(caught, "The llama.cpp runtime could not be installed."));
+    } finally {
+      setRuntimeOperation(null);
+    }
+  }
+
+  async function importRuntime(packageStatus: EnginePackageStatus) {
+    clearMessages();
+    try {
+      const path = await bridge.chooseEnginePackageArchive();
+      if (!path) return;
+      setRuntimeOperation("import");
+      const installed = await bridge.importEnginePackage(packageStatus.manifest.id, path);
+      await loadEnginePackages();
+      setNotice(`Offline llama.cpp ${installed.version} CPU runtime installed and verified.`);
+    } catch (caught) {
+      setError(errorMessage(caught, "The offline llama.cpp package could not be installed."));
+    } finally {
+      setRuntimeOperation(null);
+    }
+  }
+
+  async function verifyRuntime(packageStatus: EnginePackageStatus) {
+    clearMessages();
+    setRuntimeOperation("verify");
+    try {
+      const installed = await bridge.verifyEnginePackage(packageStatus.manifest.id);
+      await loadEnginePackages();
+      setNotice(`llama.cpp ${installed.version} runtime files passed verification.`);
+    } catch (caught) {
+      await loadEnginePackages();
+      setError(errorMessage(caught, "The llama.cpp runtime failed verification."));
+    } finally {
+      setRuntimeOperation(null);
+    }
+  }
+
+  async function uninstallRuntime(packageStatus: EnginePackageStatus) {
+    clearMessages();
+    if (!await bridge.confirmUninstallEnginePackage(packageStatus.manifest.version)) return;
+    setRuntimeOperation("uninstall");
+    try {
+      await bridge.uninstallEnginePackage(packageStatus.manifest.id);
+      await loadEnginePackages();
+      setNotice(`llama.cpp ${packageStatus.manifest.version} runtime uninstalled. Model files were not changed.`);
+    } catch (caught) {
+      setError(errorMessage(caught, "The llama.cpp runtime could not be uninstalled."));
+    } finally {
+      setRuntimeOperation(null);
+    }
+  }
+
   function clearMessages() {
     setError(null);
     setNotice(null);
@@ -176,6 +254,18 @@ export function ModelManagerView() {
       {notice && <div className="notice-banner"><CheckCircle2 size={17} /><span>{notice}</span><button aria-label="Dismiss notice" onClick={() => setNotice(null)} type="button"><X size={15} /></button></div>}
 
       {progress && <ScanProgress progress={progress} onCancel={() => void cancelScan()} />}
+
+      {enginePackages.map((packageStatus) => (
+        <RuntimePackage
+          key={packageStatus.manifest.id}
+          operation={runtimeOperation}
+          packageStatus={packageStatus}
+          onDownload={() => void downloadRuntime(packageStatus)}
+          onImport={() => void importRuntime(packageStatus)}
+          onUninstall={() => void uninstallRuntime(packageStatus)}
+          onVerify={() => void verifyRuntime(packageStatus)}
+        />
+      ))}
 
       <div className="library-summary">
         <div><span>Indexed</span><strong>{models.length}</strong></div>
@@ -211,6 +301,58 @@ export function ModelManagerView() {
       )}
     </div>
   );
+}
+
+function RuntimePackage({
+  packageStatus,
+  operation,
+  onDownload,
+  onImport,
+  onVerify,
+  onUninstall,
+}: {
+  packageStatus: EnginePackageStatus;
+  operation: "download" | "import" | "verify" | "uninstall" | null;
+  onDownload: () => void;
+  onImport: () => void;
+  onVerify: () => void;
+  onUninstall: () => void;
+}) {
+  const { manifest, installation } = packageStatus;
+  const state = installation?.state ?? "missing";
+  const ready = state === "ready";
+  const busy = operation !== null;
+  const stateLabel = installation ? {
+    installing: "Installing",
+    ready: "Verified",
+    invalid: "Invalid",
+    missing: "Missing",
+  }[installation.state] : "Not installed";
+  return <section className="runtime-package">
+    <span className="runtime-icon"><Cpu size={19} /></span>
+    <div className="runtime-copy">
+      <div><strong>llama.cpp CPU runtime</strong><span className={`model-state ${state}`}>{stateLabel}</span></div>
+      <p>{manifest.version} · Windows x64 · {formatBytes(manifest.archiveSizeBytes)}</p>
+      {installation?.error && <small title={installation.error}>{installation.error}</small>}
+    </div>
+    <div className="runtime-actions">
+      {ready ? <>
+        <button className="secondary-button" disabled={busy} onClick={onVerify} type="button">
+          {operation === "verify" ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />} Verify
+        </button>
+        <button className="icon-button danger-action" disabled={busy} onClick={onUninstall} title="Uninstall runtime" type="button">
+          {operation === "uninstall" ? <LoaderCircle className="spin" size={16} /> : <Trash2 size={16} />}
+        </button>
+      </> : <>
+        <button className="secondary-button" disabled={busy} onClick={onImport} type="button">
+          {operation === "import" ? <LoaderCircle className="spin" size={16} /> : <FileArchive size={16} />} Offline package
+        </button>
+        <button className="primary-button" disabled={busy} onClick={onDownload} type="button">
+          {operation === "download" ? <LoaderCircle className="spin" size={16} /> : <Download size={16} />} Install
+        </button>
+      </>}
+    </div>
+  </section>;
 }
 
 function ScanProgress({ progress, onCancel }: { progress: ModelScanProgress; onCancel: () => void }) {

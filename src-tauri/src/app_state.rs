@@ -1,13 +1,15 @@
 use std::{path::Path, sync::Arc};
 
 use crate::{
-    errors::AppResult, events::EventEmitter, hardware::HardwareService, models::ModelService,
-    processes::ProcessManager, settings::SettingsService, storage::Database,
+    engine_packages::EnginePackageService, errors::AppResult, events::EventEmitter,
+    hardware::HardwareService, models::ModelService, processes::ProcessManager,
+    settings::SettingsService, storage::Database,
 };
 
 pub struct AppState {
     pub database: Arc<Database>,
     pub events: Arc<EventEmitter>,
+    pub engine_packages: Arc<EnginePackageService>,
     pub hardware: HardwareService,
     pub models: Arc<ModelService>,
     pub processes: Arc<ProcessManager>,
@@ -34,6 +36,10 @@ impl AppState {
         }
         let database = Arc::new(Database::open(&data_directory.join("neuraloc-core.db"))?);
         let events = Arc::new(EventEmitter::default());
+        let engine_packages = Arc::new(EnginePackageService::new(
+            Arc::clone(&database),
+            data_directory,
+        )?);
         let models = Arc::new(ModelService::new(Arc::clone(&database)));
         let processes = Arc::new(ProcessManager::default());
         let hardware = HardwareService::new(Arc::clone(&processes));
@@ -41,6 +47,7 @@ impl AppState {
         Ok(Self {
             database,
             events,
+            engine_packages,
             hardware,
             models,
             processes,

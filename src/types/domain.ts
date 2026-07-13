@@ -151,3 +151,48 @@ export interface EventEnvelope<T> {
   emittedAt: string;
   payload: T;
 }
+
+export type EnginePackageState = "installing" | "ready" | "invalid" | "missing";
+
+export interface EnginePackageManifest {
+  manifestVersion: number;
+  id: string;
+  engineId: string;
+  version: string;
+  platform: string;
+  architecture: string;
+  route: string;
+  sourceUrl: string;
+  archiveFileName: string;
+  archiveSizeBytes: number;
+  archiveSha256: string;
+  expectedFiles: string[];
+}
+
+export interface InstalledPackageFile {
+  path: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export interface EnginePackageRecord {
+  id: string;
+  engineId: string;
+  version: string;
+  platform: string;
+  architecture: string;
+  route: string;
+  installPath: string;
+  archiveSha256: string;
+  files: InstalledPackageFile[];
+  state: EnginePackageState;
+  sourceUrl: string | null;
+  error: string | null;
+  installedAt: string | null;
+  verifiedAt: string | null;
+}
+
+export interface EnginePackageStatus {
+  manifest: EnginePackageManifest;
+  installation: EnginePackageRecord | null;
+}

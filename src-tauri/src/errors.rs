@@ -19,6 +19,8 @@ pub enum AppError {
     InvalidModel(String),
     #[error("The model record was not found: {0}")]
     ModelNotFound(String),
+    #[error("The engine package operation failed: {0}")]
+    EnginePackage(String),
     #[error("The operation could not be completed: {0}")]
     Operation(String),
 }
@@ -64,6 +66,10 @@ impl From<AppError> for IpcError {
             AppError::ModelNotFound(_) => (
                 "model_not_found",
                 "Refresh the model library and try again.",
+            ),
+            AppError::EnginePackage(_) => (
+                "engine_package_error",
+                "Check the package status and Logs, then retry or use a verified offline archive.",
             ),
             AppError::Operation(_) => (
                 "operation_error",

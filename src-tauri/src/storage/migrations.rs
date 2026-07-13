@@ -20,6 +20,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "model_library",
         sql: include_str!("../../migrations/0002_model_library.sql"),
     },
+    Migration {
+        version: 3,
+        name: "engine_packages",
+        sql: include_str!("../../migrations/0003_engine_packages.sql"),
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> AppResult<()> {
@@ -68,7 +73,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
     }
 
     #[test]
@@ -96,5 +101,13 @@ mod tests {
         assert!(columns.contains(&"verification_state".to_string()));
         assert!(columns.contains(&"gguf_metadata_json".to_string()));
         assert!(columns.contains(&"file_identity".to_string()));
+        let engine_package_tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'engine_packages'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(engine_package_tables, 1);
     }
 }

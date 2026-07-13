@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2 is in progress. ProcessManager hardening is complete for canonical spawning, allow-listed environments, natural-exit/crash tracking, exit metadata, bounded/redacted logs, explicit lifecycle updates, adapter grace periods, forced shutdown, and deterministic process tests. Immediate next work is the verified llama.cpp package manifest/repository/installer, followed by the concrete adapter, health checks, engine events, and model loading. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
+Step 2 is in progress. ProcessManager hardening and the verified CPU package layer are complete: migration-backed package state, pinned llama.cpp `b9986` Windows x64 CPU metadata, internet-gated HTTPS download, offline import, exact size/SHA-256 checks, bounded safe ZIP extraction, atomic promotion, installed-file inventory, startup reconciliation, verification/uninstall commands, Model Manager controls, and a passing opt-in official-archive integration test. Immediate next work is the concrete llama.cpp adapter, version/health checks, engine events/log exposure, loopback ownership, and model loading. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
 
 ## Dependency Map
 
@@ -72,10 +72,10 @@ Dependencies: shared preparation. It can be built alongside step 1.
 
 ### Package installation
 
-- Define a versioned engine-package manifest with platform, architecture, acceleration route, source URL, expected files, size, and SHA-256. Ship one pinned known-good manifest for Windows x64 CPU and add CUDA only after validation.
-- Add `engine_packages` metadata in migration 2 or 3 with version, route, install path, checksum, state, and verification timestamp.
-- Implement verified download to `.partial`, checksum validation, traversal-safe archive extraction, atomic install directory promotion, and cleanup/retry. Reuse this downloader in step 8.
-- Add commands for package status, install/update, verify, and uninstall. Respect `internetAccess`; allow a manually selected package for offline setup.
+- Define a versioned engine-package manifest with platform, architecture, acceleration route, source URL, expected files, size, and SHA-256. Ship one pinned known-good manifest for Windows x64 CPU and add CUDA only after validation. CPU manifest complete; CUDA remains pending.
+- Add `engine_packages` metadata in migration 2 or 3 with version, route, install path, checksum, state, and verification timestamp. Completed in migration 3 with a complete installed-file inventory.
+- Implement verified download to `.partial`, checksum validation, traversal-safe archive extraction, atomic install directory promotion, and cleanup/retry. Reuse this downloader in step 8. Completed for fresh package downloads; resume/progress remain catalog-checkpoint work.
+- Add commands for package status, install/update, verify, and uninstall. Respect `internetAccess`; allow a manually selected package for offline setup. Status/install/offline import/verify/uninstall and Model Manager controls are complete; update selection awaits a second manifest.
 
 ### Process/lifecycle hardening
 

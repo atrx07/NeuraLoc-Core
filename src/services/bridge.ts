@@ -4,6 +4,8 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AppSnapshot,
+  EnginePackageRecord,
+  EnginePackageStatus,
   EventEnvelope,
   HardwareSnapshot,
   ImportModelOutcome,
@@ -117,6 +119,51 @@ export const bridge = {
     });
   },
 
+  async chooseEnginePackageArchive(): Promise<string | null> {
+    if (!isTauri()) return null;
+    return open({
+      title: "Import a verified llama.cpp package",
+      multiple: false,
+      filters: [{ name: "ZIP archive", extensions: ["zip"] }],
+    });
+  },
+
+  async listEnginePackages(): Promise<EnginePackageStatus[]> {
+    if (!isTauri()) return [demoEnginePackageStatus()];
+    return invoke<EnginePackageStatus[]>("list_engine_packages");
+  },
+
+  async installEnginePackage(packageId: string): Promise<EnginePackageRecord> {
+    if (!isTauri()) throw new Error("Engine packages are available in the desktop app.");
+    return invoke<EnginePackageRecord>("install_engine_package", { request: { packageId } });
+  },
+
+  async importEnginePackage(packageId: string, path: string): Promise<EnginePackageRecord> {
+    if (!isTauri()) throw new Error("Engine packages are available in the desktop app.");
+    return invoke<EnginePackageRecord>("import_engine_package", { request: { packageId, path } });
+  },
+
+  async verifyEnginePackage(packageId: string): Promise<EnginePackageRecord> {
+    if (!isTauri()) throw new Error("Engine packages are available in the desktop app.");
+    return invoke<EnginePackageRecord>("verify_engine_package", { request: { packageId } });
+  },
+
+  async uninstallEnginePackage(packageId: string): Promise<void> {
+    if (!isTauri()) throw new Error("Engine packages are available in the desktop app.");
+    return invoke<void>("uninstall_engine_package", { request: { packageId } });
+  },
+
+  async confirmUninstallEnginePackage(version: string): Promise<boolean> {
+    const message = `Uninstall the llama.cpp ${version} runtime? Local GGUF model files will not be removed.`;
+    if (!isTauri()) return window.confirm(message);
+    return confirm(message, {
+      title: "Uninstall llama.cpp runtime",
+      kind: "warning",
+      okLabel: "Uninstall",
+      cancelLabel: "Keep runtime",
+    });
+  },
+
   async listModels(): Promise<ModelRecord[]> {
     if (!isTauri()) return [];
     return invoke<ModelRecord[]>("list_models");
@@ -163,3 +210,23 @@ export const bridge = {
     });
   },
 };
+
+function demoEnginePackageStatus(): EnginePackageStatus {
+  return {
+    manifest: {
+      manifestVersion: 1,
+      id: "llama.cpp-b9986-windows-x86_64-cpu",
+      engineId: "llama.cpp",
+      version: "b9986",
+      platform: "windows",
+      architecture: "x86_64",
+      route: "cpu",
+      sourceUrl: "https://github.com/ggml-org/llama.cpp/releases/download/b9986/llama-b9986-bin-win-cpu-x64.zip",
+      archiveFileName: "llama-b9986-bin-win-cpu-x64.zip",
+      archiveSizeBytes: 18_245_837,
+      archiveSha256: "df7b177d14697af9a1bd9a42e2d89455fc592e7206985ad1c672d19f3faa11d2",
+      expectedFiles: ["llama-server.exe"],
+    },
+    installation: null,
+  };
+}
