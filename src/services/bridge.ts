@@ -1,5 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, AppSnapshot, HardwareSnapshot } from "../types/domain";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
+import type {
+  AppSettings,
+  AppSnapshot,
+  EventEnvelope,
+  HardwareSnapshot,
+  ImportModelOutcome,
+  ModelRecord,
+  ModelScanProgress,
+  ModelScanSummary,
+} from "../types/domain";
 
 const defaultSettings: AppSettings = {
   theme: "dark",
@@ -85,5 +96,70 @@ export const bridge = {
     if (isTauri()) return invoke<AppSettings>("update_settings", { patch });
     demoSettings = { ...demoSettings, ...patch };
     return { ...demoSettings };
+  },
+
+  async chooseModelFile(): Promise<string | null> {
+    if (!isTauri()) return null;
+    return open({
+      title: "Import a GGUF model",
+      multiple: false,
+      filters: [{ name: "GGUF model", extensions: ["gguf"] }],
+    });
+  },
+
+  async chooseModelFolder(): Promise<string | null> {
+    if (!isTauri()) return null;
+    return open({
+      title: "Scan a folder for GGUF models",
+      directory: true,
+      recursive: true,
+      multiple: false,
+    });
+  },
+
+  async listModels(): Promise<ModelRecord[]> {
+    if (!isTauri()) return [];
+    return invoke<ModelRecord[]>("list_models");
+  },
+
+  async importModel(path: string): Promise<ImportModelOutcome> {
+    return invoke<ImportModelOutcome>("import_model", { request: { path } });
+  },
+
+  async scanModelFolder(scanId: string, path: string): Promise<ModelScanSummary> {
+    return invoke<ModelScanSummary>("scan_model_folder", { request: { scanId, path } });
+  },
+
+  async cancelModelScan(scanId: string): Promise<boolean> {
+    return invoke<boolean>("cancel_model_scan", { scanId });
+  },
+
+  async reverifyModel(modelId: string): Promise<ModelRecord> {
+    return invoke<ModelRecord>("reverify_model", { request: { modelId } });
+  },
+
+  async removeModelRecord(modelId: string): Promise<void> {
+    return invoke<void>("remove_model_record", { request: { modelId } });
+  },
+
+  async confirmRemoveModel(displayName: string): Promise<boolean> {
+    const message = `Remove ${displayName} from the library? The GGUF file will stay on disk.`;
+    if (!isTauri()) return window.confirm(message);
+    return confirm(message, {
+      title: "Remove model record",
+      kind: "warning",
+      okLabel: "Remove record",
+      cancelLabel: "Keep",
+    });
+  },
+
+  async onModelScanProgress(
+    scanId: string,
+    callback: (progress: ModelScanProgress) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<ModelScanProgress>>("model://scan-progress", (event) => {
+      if (event.payload.payload.scanId === scanId) callback(event.payload.payload);
+    });
   },
 };

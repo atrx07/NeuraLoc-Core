@@ -2,6 +2,12 @@
 
 This plan covers the next checkpoint only: a usable local GGUF chat path with model/prompt selection, streaming, persistence, and a verified download catalog. It is ordered by dependency and avoids beginning image, speech, TTS, OpenVINO, or broad API work.
 
+## Checkpoint Progress
+
+Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
+
+Immediate next work: step 2, the verified llama.cpp package installer and owned lifecycle adapter. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
+
 ## Dependency Map
 
 ```text
@@ -24,7 +30,7 @@ Shared storage, IPC, event, path, and test conventions
 
 Steps 1 and 2 can proceed in parallel after the shared conventions are in place. Step 5 can proceed in parallel with steps 2 and 3. Steps 4, 6, 7, and 8 should respect the dependencies shown above.
 
-## Shared Preparation
+## Shared Preparation (Completed for the Model Library)
 
 Keep this preparation small and land it with step 1 rather than creating a separate architecture project.
 
@@ -36,7 +42,7 @@ Keep this preparation small and land it with step 1 rather than creating a separ
 - Add small fixtures: a minimal valid GGUF header, malformed/truncated files, a deterministic fake engine, and temporary SQLite databases.
 - Establish command contract tests and repository tests before adding UI state.
 
-## 1. Local Model Discovery and Import
+## 1. Local Model Discovery and Import (Completed)
 
 Dependencies: shared preparation.
 
@@ -84,7 +90,7 @@ Dependencies: shared preparation. It can be built alongside step 1.
 
 - A verified llama.cpp package installs, starts without a model, reports version/health/logs, handles failure cleanly, stops without leaving a child process, and remains entirely controlled through Rust.
 
-## 3. GGUF Metadata Detection
+## 3. GGUF Metadata Detection (Basic Inspection Completed)
 
 Dependencies: step 1. The preferred implementation may use the pinned llama.cpp inspection capability from step 2; otherwise select and pin a maintained GGUF parser after validating it against current GGUF versions.
 
@@ -191,7 +197,7 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 
 ## Recommended Checkpoints
 
-1. **Model library checkpoint:** shared preparation + local discovery/import + basic GGUF metadata.
+1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
 2. **Runtime checkpoint:** verified llama.cpp install + lifecycle/logging + model load.
 3. **Prompt checkpoint:** Markdown import/versioning + both selectors.
 4. **Chat checkpoint:** streaming/cancellation + conversation persistence.

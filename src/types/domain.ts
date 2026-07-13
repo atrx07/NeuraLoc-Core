@@ -74,3 +74,80 @@ export interface IpcError {
   message: string;
   suggestion?: string;
 }
+
+export type ModelVerificationState = "metadata_pending" | "ready" | "invalid" | "missing";
+
+export interface GgufMetadata {
+  version: number;
+  tensorCount: number;
+  metadataCount: number;
+  architecture: string | null;
+  name: string | null;
+  fileType: number | null;
+  quantization: string | null;
+  parameterCount: number | null;
+  contextLength: number | null;
+  embeddingLength: number | null;
+  layerCount: number | null;
+  hasChatTemplate: boolean;
+  metadataBytes: number;
+  metadataPreview: Record<string, unknown>;
+}
+
+export interface ModelRecord {
+  id: string;
+  kind: string;
+  displayName: string;
+  family: string | null;
+  format: string;
+  path: string;
+  sizeBytes: number;
+  sha256: string | null;
+  verificationState: ModelVerificationState;
+  verificationError: string | null;
+  ggufMetadata: GgufMetadata | null;
+  modifiedAtUnixMs: number;
+  importedAt: string;
+  lastVerifiedAt: string | null;
+}
+
+export interface ImportModelOutcome {
+  model: ModelRecord;
+  alreadyIndexed: boolean;
+}
+
+export type ModelScanPhase = "discovering" | "importing" | "complete";
+
+export interface ModelScanProgress {
+  scanId: string;
+  phase: ModelScanPhase;
+  currentPath: string | null;
+  discovered: number;
+  processed: number;
+  imported: number;
+  duplicates: number;
+  invalid: number;
+}
+
+export interface ModelScanIssue {
+  path: string;
+  message: string;
+}
+
+export interface ModelScanSummary {
+  scanId: string;
+  discovered: number;
+  processed: number;
+  imported: number;
+  duplicates: number;
+  invalid: number;
+  cancelled: boolean;
+  issues: ModelScanIssue[];
+}
+
+export interface EventEnvelope<T> {
+  eventVersion: number;
+  sequence: number;
+  emittedAt: string;
+  payload: T;
+}

@@ -24,6 +24,8 @@ System prompts and model output cannot grant permissions, alter application poli
 
 All paths cross a central path-policy service. It canonicalizes the nearest existing ancestor, rejects traversal and device paths, checks the intended operation against a user grant, and validates the final destination remains under the authorized root.
 
+Local model import and folder-scan commands require the transient filesystem scope created by the native Tauri dialog before Rust accepts the path. The filesystem plugin is registered for that internal scope check, but no general filesystem command permission is granted to the renderer.
+
 Imported files are opened as data. File names are normalized, reserved Windows names are rejected, and extensions are only an initial filter. Basic magic bytes and container structure are inspected before indexing.
 
 The application never loads an entire multi-gigabyte model merely to hash it. Checksums stream through a bounded buffer. Writes use a sibling temporary file and atomic rename.

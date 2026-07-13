@@ -3,5 +3,5 @@
   "identifier": "desktop-default",
   "description": "Minimum capability set for the NeuraLoc-Core desktop window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-confirm"]
 }

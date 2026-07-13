@@ -5,7 +5,6 @@ import {
   Download,
   FilePlus2,
   FileText,
-  FolderOpen,
   ImagePlus,
   Mic,
   Plus,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import type { NavigationId } from "../../types/domain";
+import { ModelManagerView } from "../models/ModelManagerView";
 
 function EmptyState({ icon: Icon, title, detail, action, onAction }: { icon: typeof Boxes; title: string; detail: string; action: string; onAction?: () => void }) {
   return <div className="empty-state"><span><Icon size={27} /></span><h2>{title}</h2><p>{detail}</p><button className="primary-button" onClick={onAction} type="button"><Plus size={16} />{action}</button></div>;
@@ -37,10 +37,6 @@ function ChatWorkspace() {
   </div>;
 }
 
-function ModelWorkspace() {
-  return <div className="library-workspace"><div className="section-toolbar"><div><h2>Your models</h2><p>Installed assets are indexed locally and validated before loading.</p></div><div className="toolbar-actions"><button className="secondary-button" type="button"><FolderOpen size={16} /> Import</button><button className="primary-button" type="button"><Download size={16} /> Install model</button></div></div><div className="tab-row"><button className="active" type="button">Installed</button><button type="button">Recommended</button><button type="button">Downloads</button><button type="button">Local imports</button></div><EmptyState icon={Boxes} title="No models installed" detail="Import a local model or browse hardware-aware recommendations." action="Browse catalog" /></div>;
-}
-
 function PromptWorkspace() {
   return <div className="library-workspace"><div className="section-toolbar"><div><h2>System prompts</h2><p>Versioned profiles control behavior without changing application permissions.</p></div><div className="toolbar-actions"><button className="secondary-button" type="button"><FilePlus2 size={16} /> Import</button><button className="primary-button" type="button"><Plus size={16} /> New prompt</button></div></div><div className="rail-search wide"><Search size={15} /><input aria-label="Search prompts" placeholder="Search prompts and tags" /></div><EmptyState icon={FileText} title="Your prompt library is empty" detail="Create a profile or import Markdown with optional YAML front matter." action="Create prompt" /></div>;
 }
@@ -57,7 +53,7 @@ const emptyByView: Partial<Record<NavigationId, { icon: typeof Boxes; title: str
 export function WorkspaceView({ view }: { view: NavigationId }) {
   const setActiveView = useAppStore((state) => state.setActiveView);
   if (view === "chat") return <ChatWorkspace />;
-  if (view === "models") return <ModelWorkspace />;
+  if (view === "models") return <ModelManagerView />;
   if (view === "prompts") return <PromptWorkspace />;
   const state = emptyByView[view];
   if (!state) return null;

@@ -9,11 +9,18 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "foundation",
-    sql: include_str!("../../migrations/0001_foundation.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "foundation",
+        sql: include_str!("../../migrations/0001_foundation.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "model_library",
+        sql: include_str!("../../migrations/0002_model_library.sql"),
+    },
+];
 
 pub fn run(connection: &mut Connection) -> AppResult<()> {
     connection.execute_batch(
@@ -61,6 +68,33 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 1);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn upgrades_a_version_one_database() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(include_str!("../../migrations/0001_foundation.sql"))
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO schema_migrations(version, name, applied_at) VALUES (1, 'foundation', ?1)",
+                [Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+
+        run(&mut connection).unwrap();
+
+        let columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(models)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(columns.contains(&"verification_state".to_string()));
+        assert!(columns.contains(&"gguf_metadata_json".to_string()));
+        assert!(columns.contains(&"file_identity".to_string()));
     }
 }

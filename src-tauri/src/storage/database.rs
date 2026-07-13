@@ -44,4 +44,8 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub(crate) fn connection(&self) -> parking_lot::MutexGuard<'_, Connection> {
+        self.connection.lock()
+    }
 }

@@ -181,7 +181,12 @@ CREATE TABLE models (
   sha256 TEXT,
   compatibility_json TEXT NOT NULL,
   imported_at TEXT NOT NULL,
-  last_verified_at TEXT
+  last_verified_at TEXT,
+  verification_state TEXT NOT NULL DEFAULT 'metadata_pending',
+  verification_error TEXT,
+  gguf_metadata_json TEXT NOT NULL DEFAULT 'null',
+  modified_at_unix_ms INTEGER NOT NULL DEFAULT 0,
+  file_identity TEXT
 );
 
 CREATE TABLE conversations (
@@ -273,8 +278,12 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `refresh_hardware` | none | fresh hardware snapshot |
 | `get_settings` | none | complete non-secret settings |
 | `update_settings` | typed patch | validated settings |
-| `list_models` | kind/filter | model summaries |
-| `import_model` | granted path, import mode | indexed model |
+| `list_models` | none | model summaries |
+| `import_model` | dialog-granted GGUF path | indexed model and duplicate state |
+| `scan_model_folder` | scan ID and dialog-granted folder | scan summary |
+| `cancel_model_scan` | scan ID | accepted/current state |
+| `reverify_model` | model ID | updated model summary |
+| `remove_model_record` | model ID | metadata removal result |
 | `start_engine` | engine/model/device/settings | engine session |
 | `stop_engine` | engine session ID | final state |
 | `submit_job` | typed job request | job ID |
@@ -294,6 +303,7 @@ Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes:
 - `engine://log-line`
 - `job://state-changed`
 - `job://progress`
+- `model://scan-progress`
 - `chat://token`
 - `chat://usage`
 - `download://progress`

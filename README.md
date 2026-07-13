@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0` foundation checkpoint. Hardware/settings functionality and the desktop shell work; model import, llama.cpp, streaming chat, prompt import, conversation history, and downloads are the next phase. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0` model-library checkpoint. Hardware/settings functionality, local GGUF import and folder scanning, bounded metadata inspection, and the desktop shell work. The llama.cpp runtime, model selector, streaming chat, prompt import, conversation history, and verified downloads remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -102,7 +102,7 @@ Release packaging is not yet code-signed and should not be treated as a producti
 
 ## Data and Privacy
 
-On first native launch, NeuraLoc-Core resolves the platform application-data directory and creates `neuraloc-core.db` plus `models`, `outputs`, `prompts`, `downloads`, `cache`, and `logs` directories. SQLite uses WAL mode and foreign keys. Browser preview does not use this data directory.
+On first native launch, NeuraLoc-Core resolves the platform application-data directory and creates `neuraloc-core.db` plus workload-specific folders under `models` and `outputs`, along with `prompts`, `downloads`, `cache`, and `logs`. SQLite uses WAL mode and foreign keys. Browser preview does not use this data directory or native model imports.
 
 Normal desktop communication uses Tauri IPC. Network features default off, and no local API server is currently implemented. Models and large outputs remain ordinary files; SQLite stores metadata.
 

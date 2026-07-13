@@ -4,6 +4,7 @@ mod engines;
 mod errors;
 mod events;
 mod hardware;
+mod models;
 mod processes;
 mod scheduler;
 mod settings;
@@ -19,6 +20,8 @@ pub fn run() {
         .try_init();
 
     let application = tauri::Builder::default()
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_directory = app.path().app_data_dir()?;
             let state = AppState::new(&data_directory)
@@ -31,6 +34,12 @@ pub fn run() {
             commands::app_commands::get_app_snapshot,
             commands::hardware_commands::get_hardware_snapshot,
             commands::hardware_commands::refresh_hardware,
+            commands::model_commands::list_models,
+            commands::model_commands::import_model,
+            commands::model_commands::scan_model_folder,
+            commands::model_commands::cancel_model_scan,
+            commands::model_commands::reverify_model,
+            commands::model_commands::remove_model_record,
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
         ])

@@ -13,6 +13,14 @@ pub enum AppError {
     Probe(String),
     #[error("The process operation failed: {0}")]
     Process(String),
+    #[error("The selected path is not allowed: {0}")]
+    InvalidPath(String),
+    #[error("The GGUF model is invalid: {0}")]
+    InvalidModel(String),
+    #[error("The model record was not found: {0}")]
+    ModelNotFound(String),
+    #[error("The operation could not be completed: {0}")]
+    Operation(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -25,17 +33,47 @@ pub struct IpcError {
 
 impl From<AppError> for IpcError {
     fn from(value: AppError) -> Self {
-        let code = match value {
-            AppError::Database(_) => "database_error",
-            AppError::Io(_) => "io_error",
-            AppError::InvalidSetting(_) => "invalid_setting",
-            AppError::Probe(_) => "probe_error",
-            AppError::Process(_) => "process_error",
+        let (code, suggestion) = match &value {
+            AppError::Database(_) => (
+                "database_error",
+                "Open Logs for details and retry the operation.",
+            ),
+            AppError::Io(_) => (
+                "io_error",
+                "Check that the file still exists and is readable.",
+            ),
+            AppError::InvalidSetting(_) => {
+                ("invalid_setting", "Review the setting value and try again.")
+            }
+            AppError::Probe(_) => (
+                "probe_error",
+                "Open Logs for details and retry the hardware probe.",
+            ),
+            AppError::Process(_) => (
+                "process_error",
+                "Open Logs for details and retry the operation.",
+            ),
+            AppError::InvalidPath(_) => (
+                "invalid_path",
+                "Choose a regular local file or folder through the import dialog.",
+            ),
+            AppError::InvalidModel(_) => (
+                "invalid_model",
+                "Choose a readable GGUF model file and verify the download completed.",
+            ),
+            AppError::ModelNotFound(_) => (
+                "model_not_found",
+                "Refresh the model library and try again.",
+            ),
+            AppError::Operation(_) => (
+                "operation_error",
+                "Retry the operation. Open Logs if the problem continues.",
+            ),
         };
         Self {
             code,
             message: value.to_string(),
-            suggestion: Some("Open Logs for details and retry the operation.".into()),
+            suggestion: Some(suggestion.into()),
         }
     }
 }

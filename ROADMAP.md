@@ -17,6 +17,8 @@ Exit gate: frontend build/tests pass; Rust format, tests, and clippy pass on a R
 
 ## Phase 2: LLM Chat
 
+Status: in progress. Local GGUF import/indexing and basic metadata inspection are complete; runtime installation, loading, and chat remain pending.
+
 - llama.cpp adapter, engine package installer, GGUF import/indexing.
 - Streaming chat, cancellation, conversation branches, exports.
 - Chat-template registry and context budget strategies.
