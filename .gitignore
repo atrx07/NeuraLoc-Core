@@ -1,0 +1,54 @@
+# JavaScript / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Rust / Tauri
+src-tauri/target/
+
+# Local application data
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.partial
+*.log
+
+# Python / worker caches
+__pycache__/
+*.pyc
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+.agents/
+.codex/
+**/.agents/
+**/.codex/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+*_rsa
+*_rsa.pub
+
+# Local-only reference material
+llm-studio-reference/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*~
