@@ -8,9 +8,9 @@ Current version: `0.1.0`
 
 ## Summary
 
-NeuraLoc-Core is a working Windows desktop foundation built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, and engine packages, and renders a polished desktop shell with functional Hardware, Settings, and Model Manager views. A pinned Windows x64 CPU llama.cpp package can now be downloaded or imported offline, verified, installed, reverified, and uninstalled through the Model Manager. The project also contains foundations for owned child processes, inference engine adapters, resource-fit policy, and versioned events.
+NeuraLoc-Core is a working Windows desktop foundation built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, and llama.cpp runtime control, and renders a polished desktop shell with functional Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can now be launched, health-checked, stopped, and inspected through the Model Manager without exposing the internal server to the renderer.
 
-This checkpoint is not yet a local inference product. GGUF models can be indexed and inspected and the pinned CPU runtime can be installed, but llama.cpp cannot yet be started and models cannot yet be loaded, downloaded, or used for chat. Prompt, chat, model-catalog download, image, speech, TTS, gallery, and logs workspaces remain intentional empty states.
+This checkpoint is not yet a local inference product. Runtime/model loading is implemented, but no valid tensor-bearing GGUF fixture is stored in the repository, so an end-to-end real model load and generation have not yet been proven in automation. Chat generation, prompt selection, conversation persistence, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -22,10 +22,10 @@ This checkpoint is not yet a local inference product. GGUF models can be indexed
 - Dark, light, and system theme handling. The chosen theme is persisted by the Rust settings service when running in Tauri.
 - Functional Hardware view with refresh, CPU/RAM summary, detected accelerators, capability evidence, telemetry fields, and warnings.
 - Functional Settings view for theme, performance profile, model retention, idle timeout, internet access, web search, and local API state.
-- Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, and llama.cpp CPU runtime install/import/verify/uninstall controls.
+- Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, llama.cpp package controls, per-model load/stop controls, runtime health, lifecycle state, and retained-log inspection.
 - Catalog and Downloads tabs remain visibly disabled until the verified catalog checkpoint.
 - Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, and native model imports are unavailable.
-- Typed frontend domain interfaces for app snapshots, settings, hardware, local models, GGUF metadata, engine packages, scan events, navigation, and IPC errors.
+- Typed frontend domain interfaces for app snapshots, settings, hardware, local models, GGUF metadata, engine packages, runtime lifecycle/health/logs, scan/engine events, navigation, and IPC errors.
 - Shared adaptive binary-byte and model-metadata formatters with frontend unit tests.
 
 ### Rust application core
@@ -35,7 +35,7 @@ This checkpoint is not yet a local inference product. GGUF models can be indexed
 - Ordered transactional migration runner with a migration ledger, idempotency coverage, and an explicit version-1 upgrade test.
 - Additive migration 2 extends model records with verification state/error, bounded GGUF metadata JSON, modification time, and stable file identity.
 - Additive migration 3 adds engine-package identity, route, install path, archive checksum, installed-file inventory, state, source, errors, and install/verification timestamps.
-- Thread-safe `AppState` containing `Database`, `EnginePackageService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, and `SettingsService` handles.
+- Thread-safe `AppState` containing `Database`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, and `SettingsService` handles.
 - Stable application and IPC error types with machine-readable error codes and user-facing suggestions.
 - Model repository/service and typed commands for list, import, recursive scan, cancellation, reverify, and record removal.
 - Engine-package repository/service and typed commands for status, online install, offline import, reverify, and uninstall.
@@ -43,6 +43,10 @@ This checkpoint is not yet a local inference product. GGUF models can be indexed
 - Online package installation is gated by `internetAccess`, limits redirects to approved GitHub HTTPS hosts, streams to `.partial`, enforces exact size/SHA-256, and removes the partial after success or failure.
 - ZIP installation rejects traversal, links/reparse points, Windows device/alternate-stream names, duplicate paths, excessive entries/files/sizes, missing expected files, and untracked installed files; promotion uses an internal staging directory and atomic rename.
 - Installation records a SHA-256 inventory for every extracted file. Reverify rejects missing, changed, linked, or added files, and startup reconciles interrupted or missing installations.
+- Concrete llama.cpp CPU adapter and runtime service that reverify the selected model and complete package inventory, run a terminating `--version --help` build probe, allow only bounded context/thread options, and launch only the canonical packaged executable.
+- The adapter reserves loopback port `0`, binds only `127.0.0.1`, passes a random API key through the cleared child environment, polls `/health`, and requires authenticated `/props` to report the expected canonical model path and `b9986` build before declaring ready.
+- Runtime commands expose status, explicit health, start, stop, and bounded retained logs. Package uninstall is rejected while startup or a live session owns the runtime.
+- Model-load cancellation can stop the owned process while readiness polling is in flight. Stop uses a short adapter grace interval before the process manager force-stops only its tracked child.
 - Central model path validation requires absolute canonical regular files/folders, rejects device/traversal/symlink/reparse paths, limits imports to `.gguf`, and never deletes a model file.
 - Cheap verification checks GGUF magic/version, bounded counts and metadata sizes, modification time, path identity, and hard-link duplicates without loading tensors or complete model files into memory.
 - Bounded GGUF inspection extracts architecture, model name, file type/quantization, parameter count, context length, embedding length, layer count, and chat-template presence while retaining a small diagnostic metadata preview.
@@ -65,10 +69,11 @@ This checkpoint is not yet a local inference product. GGUF models can be indexed
   - assigns UUID ownership IDs and records PID/start time;
   - supervises natural exits, records exit code/end time, and distinguishes stopped, crashed, and error states;
   - provides lifecycle updates, summaries, active counts, and retained logs internally;
+  - runs terminating native build/capability probes through the same owned-process boundary;
   - allows an adapter grace period before force-stopping only the owned child;
   - limits native probes to four seconds;
   - stops all registered processes on normal application exit.
-- Engine lifecycle enum and shared `InferenceEngine`/`ChatEngine` traits with typed configuration, start request, health, token chunks, and usage.
+- Engine lifecycle enum and shared `InferenceEngine`/`ChatEngine` traits with a concrete llama.cpp lifecycle implementation; streaming `ChatEngine` generation remains intentionally unconnected.
 - Scheduler domain types for job kinds/states and a resource policy that labels memory fit as excellent, good, tight, or not recommended.
 - Full generated desktop icon bundle, including Windows ICO/PNG, macOS ICNS, iOS, and Android assets.
 - Tauri capability file grants `core:default` plus only native dialog open/confirm permissions; no general filesystem, shell, or network plugin is exposed to the renderer.
@@ -140,12 +145,15 @@ NeuraLoc-Core/
         |-- events.rs
         |-- commands/
         |   |-- app_commands.rs
+        |   |-- engine_commands.rs
         |   |-- engine_package_commands.rs
         |   |-- hardware_commands.rs
         |   |-- model_commands.rs
         |   |-- settings_commands.rs
         |   `-- mod.rs
         |-- engines/
+        |   |-- llama_cpp.rs
+        |   |-- service.rs
         |   |-- traits.rs
         |   `-- mod.rs
         |-- engine_packages/
@@ -182,14 +190,14 @@ NeuraLoc-Core/
 ## Architectural Decisions
 
 1. **Tauri IPC is the renderer boundary.** React calls a typed bridge; it does not receive raw process, database, shell, or unrestricted filesystem access.
-2. **Rust owns native orchestration.** The central `ProcessManager` is intended to be the only child-process entry point. Engine adapters will use it rather than spawning independently.
+2. **Rust owns native orchestration.** The central `ProcessManager` is the only child-process entry point used by the concrete llama.cpp adapter.
 3. **Inference is delegated.** NeuraLoc-Core is an orchestration and UX layer. Proven native engines such as llama.cpp will perform inference.
 4. **Local and private by default.** Network-related settings default off. The desktop shell opens no application API port, and the CSP restricts content to packaged/Tauri resources.
 5. **Large assets remain files.** Models, outputs, prompts, downloads, cache, and logs live in the application data directory. SQLite stores metadata and relationships.
 6. **Schema changes are additive migrations.** Applied migrations are recorded and each migration runs in a transaction. Existing migration files should not be edited after release; add `0002_*` and later files.
 7. **Capability claims require evidence.** Hardware support uses available/unknown/experimental states and does not equate device presence with backend/model compatibility.
 8. **Frontend browser mode is a demo adapter.** It is useful for layout work, but native process, database, filesystem, and hardware behavior must be tested in Tauri.
-9. **Shared traits precede concrete engines.** Engine and chat traits define lifecycle, health, token streaming, and cancellation contracts before llama.cpp is connected.
+9. **Shared traits contain concrete engines.** The llama.cpp adapter now implements lifecycle and health through `InferenceEngine`; token streaming and cancellation remain the next `ChatEngine` work.
 10. **Process ownership is explicit.** Only tracked child handles are stopped. NeuraLoc-Core does not kill by executable name or occupied port.
 
 ## Database and Migrations
@@ -236,6 +244,11 @@ Indexes exist for conversation recency, conversation messages, model kind, model
 | `import_engine_package` | package ID and granted `.zip` path | `EnginePackageRecord` | Performs the same exact size/checksum/extraction/install flow for an offline archive |
 | `verify_engine_package` | package ID | `EnginePackageRecord` | Verifies the exact installed file set, sizes, and SHA-256 inventory |
 | `uninstall_engine_package` | package ID | none | Removes only the manifest-owned internal package directory and its database record |
+| `get_engine_status` | none | `EngineRuntimeStatus` | Returns package/session lifecycle, process/model identity, version, exit metadata, and detail |
+| `get_engine_health` | none | `EngineHealth` | Rechecks the owned loopback server and authenticated model/build identity |
+| `start_engine` | model ID with optional context/threads | `EngineRuntimeStatus` | Reverifies model/package/binary, launches the CPU server, and waits for owned ready state |
+| `stop_engine` | session ID | `EngineRuntimeStatus` | Stops only the matching retained owned session and returns its final state |
+| `get_engine_logs` | session ID | `EngineLogSnapshot` | Returns the process manager's bounded, redacted retained lines |
 | `get_hardware_snapshot` | none | `HardwareSnapshot` | Returns cached hardware data or performs the first native probe |
 | `refresh_hardware` | none | `HardwareSnapshot` | Forces `sysinfo`, NVIDIA, and Windows NPU probes and replaces the cache |
 | `get_settings` | none | `AppSettings` | Returns the in-memory settings loaded from SQLite/defaults |
@@ -253,7 +266,7 @@ Indexes exist for conversation recency, conversation messages, model kind, model
 
 `EventEnvelope<T>` is emitted through a central utility with `eventVersion: 1`, per-stream monotonic sequence, UTC `emittedAt`, and a typed payload.
 
-`model://scan-progress` is emitted by Rust and consumed by the Model Manager for discovery/import progress. Sequence state is released when the scan ends. Other names described in `ARCHITECTURE.md`, such as `engine://state-changed`, `chat://token`, and `download://progress`, remain planned contracts.
+`model://scan-progress` is consumed for discovery/import progress. `engine://state-changed` and bounded-batch `engine://log-line` are consumed by the Model Manager for live and terminal session updates. `chat://token`, job, download, telemetry, and settings events remain planned contracts.
 
 ## Passing Tests and Build Commands
 
@@ -272,8 +285,8 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 2 Vitest files, 5 tests for adaptive byte formatting, missing telemetry, parameter counts, and context lengths.
-- Rust: 23 passing default tests plus one ignored network integration test. Coverage includes NVIDIA CSV parsing, resource fit, migration idempotency/version-1 upgrade, bounded GGUF parsing/failures, model path safety/persistence/deduplication/reconciliation/scanning, process lifecycle/logging/shutdown, package manifest validation, checksum rejection, traversal/device/alternate-stream defenses, installed-file inventory, tamper/added-file detection, and safe extraction.
-- Opt-in package integration: the ignored test downloads the pinned official archive and completes install, exact file verification, and uninstall in a temporary application-data directory; it passed on 2026-07-13.
+- Rust: 27 passing default tests plus one ignored network integration test. Coverage adds owned build probes, pinned-version parsing, fixed/bounded llama.cpp arguments, and `/props` model/build identity validation to the prior hardware, database, GGUF, model, process, and package suites.
+- Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 
 The Tauri debug build also runs the production frontend build as its configured pre-build command.
 
@@ -285,32 +298,32 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 20,422,656 bytes. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 29,125,120 bytes. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
-- `cargo clippy --all-targets` passes but reports expected dead-code warnings for engine, scheduler, and process interfaces that are scaffolded but not connected to runtime commands yet.
+- `cargo clippy --all-targets` passes but reports expected dead-code warnings for chat generation, scheduler, and other interfaces that remain scaffolded.
 - Rust is installed under `%USERPROFILE%\.cargo\bin`; terminals that do not inherit that user PATH require the session PATH command shown above.
 - npm may print a non-fatal `could not canonicalize path C:\Users\atrx07` warning in the current host environment.
 - Hardware discovery is partial: no Vulkan loader enumeration, Intel iGPU details, disks, battery/power state, instruction-set report, OpenVINO runtime probe, or robust driver/runtime version inventory exists yet.
 - CUDA readiness currently means `nvidia-smi` responded; a compatible llama.cpp CUDA package has not been installed or validated.
 - The bundled engine catalog currently contains only llama.cpp `b9986` Windows x64 CPU. CUDA/Vulkan packages, resumable package downloads, package progress events, and package updates remain pending.
 - NPU detection is name/text based through `pnputil`; model compatibility still requires a future OpenVINO compile probe.
-- Process lifecycle and retained logs are not exposed through IPC yet. The manager supports an adapter grace period, but the llama.cpp adapter still needs to issue its protocol-specific shutdown request before force-stop fallback and emit engine events.
+- The current pinned llama.cpp server exposes no dedicated process-shutdown endpoint used by this adapter, so stop applies a 250 ms grace interval and then force-stops only the owned handle. Crash recovery/restart policy is not implemented.
 - The scheduler is a resource classification scaffold, not a queue or job runner. `activeJobs` is fixed at zero.
-- Model scan events are sequenced and consumed, but engine/chat/download events, throttling, and broader stale-sequence handling remain unfinished.
+- Model scan and engine lifecycle/log events are sequenced and consumed. Early model-loading state is polled while `start_engine` awaits readiness; chat/download events, general throttling, and broader stale-sequence handling remain unfinished.
 - Settings, models, and engine packages have repository/service implementations. Prompt, conversation/message, general download, output, benchmark, and job repositories remain unfinished.
 - The first-run flag is fixed false; setup flow and completion persistence are not implemented.
 - The optional local API is only a setting. No server is started, and LAN access is not exposed in the UI.
 - Frontend async initialization/settings updates have minimal error handling and no global error boundary.
-- Model services use temporary-file database/fixture tests, but there are no direct Tauri command harness tests, process fixture tests, automated native-window UI tests, or installer smoke tests.
+- Model services use temporary-file database/fixture tests and process lifecycle uses copied deterministic test executables, but there are no direct Tauri command harness tests, automated native-window UI tests, or installer smoke tests.
 - The NSIS target is configured, but release packaging, code signing, updater policy, and runtime/model package signing are unfinished.
 
 ## Unfinished or Scaffolded Functionality
 
 - Full SHA-256 verification/catalog matching, startup-wide missing-file reconciliation, automatic relocation discovery, and deliberate delete-file workflows for imported models.
 - Advanced GGUF compatibility normalization, RAM/VRAM estimates, projector pairing, hostile-format corpus coverage, and installed-engine validation.
-- Concrete llama.cpp engine adapter, version/health probes, loopback ownership, model loading, lifecycle events, logging UI, cancellation, and crash recovery. The pinned CPU package acquisition/verification/installation slice is complete.
+- Real tensor-bearing GGUF load/inference integration coverage, streaming chat generation, request cancellation, usage accounting, graceful protocol-level request draining, and crash recovery. Adapter/package/version/health/loopback/lifecycle/log controls are implemented.
 - Model selector data and compatibility/fit recommendations.
 - Markdown/text system-prompt import, YAML front matter, hashing, immutable versions, editing, searching, and selector binding.
 - Streaming chat generation, token events, generation controls, cancellation, usage metrics, and context management.

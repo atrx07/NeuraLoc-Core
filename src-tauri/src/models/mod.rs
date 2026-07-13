@@ -7,5 +7,5 @@ mod types;
 pub use service::ModelService;
 pub use types::{
     ImportModelOutcome, ImportModelRequest, ModelIdRequest, ModelRecord, ModelScanSummary,
-    ScanModelFolderRequest,
+    ScanModelFolderRequest, VerificationState,
 };

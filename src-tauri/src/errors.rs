@@ -21,6 +21,8 @@ pub enum AppError {
     ModelNotFound(String),
     #[error("The engine package operation failed: {0}")]
     EnginePackage(String),
+    #[error("The inference engine operation failed: {0}")]
+    Engine(String),
     #[error("The operation could not be completed: {0}")]
     Operation(String),
 }
@@ -70,6 +72,10 @@ impl From<AppError> for IpcError {
             AppError::EnginePackage(_) => (
                 "engine_package_error",
                 "Check the package status and Logs, then retry or use a verified offline archive.",
+            ),
+            AppError::Engine(_) => (
+                "engine_error",
+                "Check the model, runtime status, and retained engine logs, then retry.",
             ),
             AppError::Operation(_) => (
                 "operation_error",

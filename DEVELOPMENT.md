@@ -31,6 +31,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 ```
 
+The networked package integration remains opt-in and downloads only the pinned official archive into a temporary application-data directory:
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml engine_packages::service::tests::installs_verifies_and_uninstalls_the_pinned_package -- --ignored --exact
+```
+
 The browser Vite build uses a typed demo bridge when Tauri IPC is unavailable. This supports UI development only; process, filesystem, SQLite, and hardware behavior must be verified in Tauri.
 
 ## Engineering rules
@@ -40,7 +46,7 @@ The browser Vite build uses a typed demo bridge when Tauri IPC is unavailable. T
 - SQL lives in migrations or repositories.
 - Hardware and backend decisions go through the capability matrix and scheduler.
 - Long operations accept cancellation and emit progress events.
-- Tests use small fixtures and injected hardware probes; normal CI never downloads models.
+- Tests use small fixtures and injected hardware probes; normal CI never downloads models or engine packages. The ignored package test validates the official runtime build separately.
 
 ## Packaging
 

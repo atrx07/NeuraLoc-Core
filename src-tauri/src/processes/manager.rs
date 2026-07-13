@@ -12,7 +12,7 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
     sync::{mpsc, oneshot, Mutex},
-    time::timeout,
+    time::{sleep, timeout, Instant},
 };
 use uuid::Uuid;
 
@@ -266,6 +266,45 @@ impl ProcessManager {
             .get(id)
             .map(|process| process.logs.lock().iter().cloned().collect())
             .unwrap_or_default()
+    }
+
+    pub async fn run_owned_probe(
+        &self,
+        label: &str,
+        executable: &Path,
+        args: &[String],
+        options: SpawnOptions,
+        probe_timeout: Duration,
+    ) -> AppResult<Vec<String>> {
+        let id = self.spawn_owned(label, executable, args, options).await?;
+        let deadline = Instant::now() + probe_timeout;
+        loop {
+            let summary = self
+                .summary(&id)
+                .await
+                .ok_or_else(|| AppError::Process(format!("owned probe {id} disappeared")))?;
+            if summary.state.is_terminal() {
+                // Log readers finish independently of the child waiter.
+                sleep(Duration::from_millis(20)).await;
+                let logs = self.logs(&id).await;
+                if summary.state == EngineLifecycle::Stopped && summary.exit_code == Some(0) {
+                    return Ok(logs);
+                }
+                let detail = logs
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| "the probe produced no diagnostic output".into());
+                return Err(AppError::Process(format!(
+                    "{label} failed with {:?}: {detail}",
+                    summary.exit_code
+                )));
+            }
+            if Instant::now() >= deadline {
+                let _ = self.stop_with_grace(&id, Duration::from_millis(100)).await;
+                return Err(AppError::Process(format!("{label} timed out")));
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
     }
 
     pub async fn run_probe(&self, executable: &str, args: &[&str]) -> AppResult<String> {
@@ -555,6 +594,24 @@ mod tests {
         assert_eq!(summary.state, EngineLifecycle::Stopped);
         assert!(summary.ended_at.is_some());
         assert_eq!(manager.active_count().await, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn runs_a_bounded_owned_probe() {
+        let manager = ProcessManager::default();
+        let executable = TestExecutable::copy_from_current();
+        let logs = manager
+            .run_owned_probe(
+                "fixture version probe",
+                &executable.0,
+                &fixture_args(),
+                fixture_options("exit"),
+                Duration::from_secs(2),
+            )
+            .await
+            .unwrap();
+        assert!(logs.iter().any(|line| line.contains("fixture ready")));
+        assert!(logs.iter().any(|line| line.contains("[REDACTED]")));
     }
 
     #[test]

@@ -6,6 +6,10 @@ import type {
   AppSnapshot,
   EnginePackageRecord,
   EnginePackageStatus,
+  EngineHealth,
+  EngineLogBatch,
+  EngineLogSnapshot,
+  EngineRuntimeStatus,
   EventEnvelope,
   HardwareSnapshot,
   ImportModelOutcome,
@@ -153,6 +157,51 @@ export const bridge = {
     return invoke<void>("uninstall_engine_package", { request: { packageId } });
   },
 
+  async getEngineStatus(): Promise<EngineRuntimeStatus> {
+    if (!isTauri()) return demoEngineStatus();
+    return invoke<EngineRuntimeStatus>("get_engine_status");
+  },
+
+  async getEngineHealth(): Promise<EngineHealth> {
+    if (!isTauri()) throw new Error("Engine health is available in the desktop app.");
+    return invoke<EngineHealth>("get_engine_health");
+  },
+
+  async startEngine(modelId: string): Promise<EngineRuntimeStatus> {
+    if (!isTauri()) throw new Error("Local model loading is available in the desktop app.");
+    return invoke<EngineRuntimeStatus>("start_engine", {
+      request: { modelId, contextSize: null, threads: null },
+    });
+  },
+
+  async stopEngine(sessionId: string): Promise<EngineRuntimeStatus> {
+    if (!isTauri()) throw new Error("Local model loading is available in the desktop app.");
+    return invoke<EngineRuntimeStatus>("stop_engine", { request: { sessionId } });
+  },
+
+  async getEngineLogs(sessionId: string): Promise<EngineLogSnapshot> {
+    if (!isTauri()) return { sessionId, processId: "demo", lines: [] };
+    return invoke<EngineLogSnapshot>("get_engine_logs", { request: { sessionId } });
+  },
+
+  async onEngineStateChanged(
+    callback: (status: EngineRuntimeStatus) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<EngineRuntimeStatus>>("engine://state-changed", (event) => {
+      callback(event.payload.payload);
+    });
+  },
+
+  async onEngineLogLines(
+    callback: (batch: EngineLogBatch) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<EngineLogBatch>>("engine://log-line", (event) => {
+      callback(event.payload.payload);
+    });
+  },
+
   async confirmUninstallEnginePackage(version: string): Promise<boolean> {
     const message = `Uninstall the llama.cpp ${version} runtime? Local GGUF model files will not be removed.`;
     if (!isTauri()) return window.confirm(message);
@@ -228,5 +277,23 @@ function demoEnginePackageStatus(): EnginePackageStatus {
       expectedFiles: ["llama-server.exe"],
     },
     installation: null,
+  };
+}
+
+function demoEngineStatus(): EngineRuntimeStatus {
+  return {
+    engineId: "llama.cpp",
+    packageId: "llama.cpp-b9986-windows-x86_64-cpu",
+    lifecycle: "notInstalled",
+    sessionId: null,
+    processId: null,
+    pid: null,
+    modelId: null,
+    modelName: null,
+    backendVersion: null,
+    startedAt: null,
+    endedAt: null,
+    exitCode: null,
+    detail: "Install and verify the llama.cpp CPU runtime to load a model.",
   };
 }

@@ -66,6 +66,12 @@ pub async fn uninstall_engine_package(
     state: State<'_, AppState>,
     request: EnginePackageIdRequest,
 ) -> Result<(), IpcError> {
+    if state.engines.is_active().await {
+        return Err(crate::errors::AppError::EnginePackage(
+            "stop the active llama.cpp session before uninstalling its runtime".into(),
+        )
+        .into());
+    }
     state
         .engine_packages
         .uninstall(&request.package_id)

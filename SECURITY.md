@@ -15,6 +15,7 @@ System prompts and model output cannot grant permissions, alter application poli
 ## IPC
 
 - Normal desktop communication uses Tauri IPC and opens no application HTTP port.
+- Upstream engines may require a Rust-internal loopback endpoint. The renderer receives neither that endpoint nor its ownership token.
 - Every command accepts a typed payload and validates lengths, enum values, identifiers, and paths.
 - Tauri capabilities grant the renderer only the commands it needs.
 - The webview does not receive raw process handles, database handles, secrets, or unrestricted filesystem APIs.
@@ -36,9 +37,10 @@ The application never loads an entire multi-gigabyte model merely to hash it. Ch
 - Executables are addressed by canonical path and arguments are passed as arrays.
 - User text is never interpolated into a command shell.
 - Environment variables are allow-listed per adapter.
+- The llama.cpp adapter binds only `127.0.0.1`, gives each session a random environment-only API key, challenges authentication, and matches `/props` model/build identity before marking the process ready.
 - Every process receives an ownership ID and is tracked by PID plus creation metadata.
 - Shutdown acts only on tracked handles; NeuraLoc-Core never kills by image name or occupied port.
-- Captured output is bounded, encoded defensively, and scrubbed before export.
+- Captured output is limited to 2,000 lines per process and 16 KiB per line, encoded defensively, and scrubbed before retention or IPC exposure.
 
 ## Downloads and model supply chain
 

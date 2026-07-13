@@ -196,3 +196,45 @@ export interface EnginePackageStatus {
   manifest: EnginePackageManifest;
   installation: EnginePackageRecord | null;
 }
+
+export type EngineLifecycle =
+  | "notInstalled"
+  | "installed"
+  | "starting"
+  | "loadingModel"
+  | "ready"
+  | "busy"
+  | "stopping"
+  | "stopped"
+  | "crashed"
+  | "recovering"
+  | "error";
+
+export interface EngineRuntimeStatus {
+  engineId: string;
+  packageId: string;
+  lifecycle: EngineLifecycle;
+  sessionId: string | null;
+  processId: string | null;
+  pid: number | null;
+  modelId: string | null;
+  modelName: string | null;
+  backendVersion: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  exitCode: number | null;
+  detail: string;
+}
+
+export interface EngineHealth {
+  ready: boolean;
+  detail: string;
+}
+
+export interface EngineLogSnapshot {
+  sessionId: string;
+  processId: string;
+  lines: string[];
+}
+
+export interface EngineLogBatch extends EngineLogSnapshot {}

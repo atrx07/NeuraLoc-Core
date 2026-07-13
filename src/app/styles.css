@@ -167,7 +167,8 @@ p { color: var(--muted); line-height: 1.55; }
 .scan-progress strong { font-size: 12px; }
 .scan-progress span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .scan-progress progress { width: 100%; height: 5px; overflow: hidden; border: 0; border-radius: 3px; accent-color: var(--accent); }
-.runtime-package { min-height: 78px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); background: var(--surface); }
+.runtime-package, .runtime-session { min-height: 78px; display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--border-soft); background: var(--surface); }
+.runtime-session { background: var(--bg); }
 .runtime-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 6px; color: var(--accent-strong); background: var(--input); }
 .runtime-copy { min-width: 0; display: grid; gap: 4px; }
 .runtime-copy > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -175,6 +176,12 @@ p { color: var(--muted); line-height: 1.55; }
 .runtime-copy p { color: var(--muted); font-size: 10px; }
 .runtime-copy small { overflow: hidden; color: var(--danger); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .runtime-actions { display: flex; align-items: center; gap: 7px; }
+.active-control { border-color: rgba(56,182,165,.42); color: var(--accent-strong); background: var(--accent-soft); }
+.runtime-log-view { border-bottom: 1px solid var(--border-soft); background: var(--input); }
+.runtime-log-view > div { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 22px; color: var(--muted); font-size: 10px; }
+.runtime-log-view > div svg { color: var(--accent-strong); }
+.runtime-log-view > div span { margin-left: auto; color: var(--subtle); }
+.runtime-log-view pre { max-height: 210px; margin: 0; overflow: auto; padding: 12px 22px 16px; color: var(--muted); font: 10px/1.55 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .library-summary { min-height: 72px; display: grid; grid-template-columns: 105px 105px 135px minmax(240px, 1fr); align-items: center; border-bottom: 1px solid var(--border-soft); }
 .library-summary > div { min-width: 0; display: grid; gap: 3px; padding: 0 18px; border-right: 1px solid var(--border-soft); }
 .library-summary span { color: var(--subtle); font-size: 9px; font-weight: 700; text-transform: uppercase; }
@@ -189,7 +196,7 @@ p { color: var(--muted); line-height: 1.55; }
 .model-table th:nth-child(2) { width: 31%; }
 .model-table th:nth-child(3) { width: 10%; }
 .model-table th:nth-child(4) { width: 19%; }
-.model-table th:nth-child(5) { width: 82px; }
+.model-table th:nth-child(5) { width: 122px; }
 .model-table tbody tr:hover { background: var(--surface); }
 .model-primary { min-width: 0; display: grid; gap: 5px; }
 .model-primary strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -264,9 +271,10 @@ p { color: var(--muted); line-height: 1.55; }
   .error-banner, .warning-banner, .notice-banner, .security-note, .scan-progress { margin-right: 14px; margin-left: 14px; }
   .scan-progress { grid-template-columns: auto minmax(0, 1fr); }
   .scan-progress .secondary-button { grid-column: 1 / -1; }
-  .runtime-package { grid-template-columns: 36px minmax(0, 1fr); padding: 12px 14px; }
+  .runtime-package, .runtime-session { grid-template-columns: 36px minmax(0, 1fr); padding: 12px 14px; }
   .runtime-actions { grid-column: 1 / -1; }
   .runtime-actions .secondary-button, .runtime-actions .primary-button { flex: 1; }
+  .runtime-log-view > div, .runtime-log-view pre { padding-right: 14px; padding-left: 14px; }
   .hardware-grid { grid-template-columns: 1fr; padding: 14px; }
   .capability-table-wrap { margin: 0 14px 18px; overflow-x: auto; }
   .capability-table { min-width: 560px; }

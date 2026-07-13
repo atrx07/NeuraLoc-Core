@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2 is in progress. ProcessManager hardening and the verified CPU package layer are complete: migration-backed package state, pinned llama.cpp `b9986` Windows x64 CPU metadata, internet-gated HTTPS download, offline import, exact size/SHA-256 checks, bounded safe ZIP extraction, atomic promotion, installed-file inventory, startup reconciliation, verification/uninstall commands, Model Manager controls, and a passing opt-in official-archive integration test. Immediate next work is the concrete llama.cpp adapter, version/health checks, engine events/log exposure, loopback ownership, and model loading. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
+Step 2 is in progress. ProcessManager hardening, the verified CPU package layer, and the concrete llama.cpp lifecycle are implemented: the adapter reverifies model/package files, probes the real pinned build, owns a CPU-only loopback server, authenticates `/props` model/build identity after `/health`, exposes typed status/health/start/stop/log commands, emits lifecycle/log events, supports load cancellation, and has Model Manager controls. Immediate next work is validation with a small real tensor-bearing GGUF, then streaming/cancellation through `ChatEngine`; complete advanced compatibility/fit work in step 3 and connect step 4's Chat model selector alongside that validation.
 
 ## Dependency Map
 
@@ -79,16 +79,16 @@ Dependencies: shared preparation. It can be built alongside step 1.
 
 ### Process/lifecycle hardening
 
-- Implement a concrete llama.cpp adapter behind `InferenceEngine` and `ChatEngine`.
-- Harden `ProcessManager`: detect natural exit, update lifecycle state, capture exit code, expose bounded/redacted logs, support adapter-specific graceful shutdown before forced termination, and emit process/engine events. Natural-exit tracking, lifecycle/exit metadata, bounded/redacted retention, and grace/force-stop behavior are complete; IPC exposure and process/engine events remain.
-- Launch by canonical executable path with argument arrays and an allow-listed environment. Never use a shell.
-- Reserve loopback port `0`, authenticate/identify the owned server where possible, poll health with a bounded timeout, and never kill another process by name or port.
-- Implement explicit transitions through installed, starting, loading, ready, busy, stopping, stopped, crashed, and error states.
-- Guarantee `stop_all` on application exit and add a fake-engine integration test for start, log capture, crash, timeout, cancellation, and shutdown.
+- Implement a concrete llama.cpp adapter behind `InferenceEngine` and `ChatEngine`. Lifecycle/health is implemented through `InferenceEngine`; streaming generation and request cancellation remain in `ChatEngine`.
+- Harden `ProcessManager`: natural exits, lifecycle/exit metadata, bounded/redacted logs, typed IPC exposure, lifecycle/log events, owned probes, grace/force-stop, and shutdown cleanup are implemented. Crash recovery and protocol-level request draining remain.
+- Launch by canonical executable path with fixed argument arrays and an allow-listed environment. Completed; the API key is environment-only and no shell is used.
+- Reserve loopback port `0`, authenticate/identify the owned server, poll health with a bounded timeout, and never kill another process by name or port. Completed with a wrong-key challenge plus authenticated `/props` model/build checks.
+- Implement explicit transitions through installed, starting, loading, ready, busy, stopping, stopped, crashed, and error states. Process-backed states are implemented; busy awaits generation and recovering awaits crash policy.
+- Guarantee `stop_all` on application exit and add deterministic process tests for successful exit, log redaction, crash, timeout/force-stop, owned probes, and shutdown. Add real-model load/cancel/crash fixtures once a small redistributable GGUF is selected.
 
 ### Acceptance gate
 
-- A verified llama.cpp package installs, starts without a model, reports version/health/logs, handles failure cleanly, stops without leaving a child process, and remains entirely controlled through Rust.
+- A verified llama.cpp package installs, reports its pinned build, and is entirely Rust-controlled with health, ownership, logs, cancellation, and stop behavior. The remaining gate is a successful load/stop with a small real tensor-bearing GGUF plus confirmation that no child remains.
 
 ## 3. GGUF Metadata Detection (Basic Inspection Completed)
 
@@ -198,7 +198,7 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 ## Recommended Checkpoints
 
 1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
-2. **Runtime checkpoint:** verified llama.cpp install + lifecycle/logging + model load.
+2. **Runtime checkpoint (integration validation remaining):** verified llama.cpp install + lifecycle/logging + model-load implementation; prove a real GGUF load/stop next.
 3. **Prompt checkpoint:** Markdown import/versioning + both selectors.
 4. **Chat checkpoint:** streaming/cancellation + conversation persistence.
 5. **Catalog checkpoint:** signed metadata + resumable verified downloads.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   Boxes,
   CheckCircle2,
@@ -9,15 +10,19 @@ import {
   FilePlus2,
   FolderSearch,
   LoaderCircle,
+  Play,
   RefreshCw,
   Search,
   ShieldCheck,
+  Square,
+  SquareTerminal,
   Trash2,
   X,
 } from "lucide-react";
 import { bridge } from "../../services/bridge";
 import type {
   EnginePackageStatus,
+  EngineRuntimeStatus,
   ModelRecord,
   ModelScanProgress,
   ModelScanSummary,
@@ -36,11 +41,15 @@ const stateLabels: Record<ModelVerificationState, string> = {
 export function ModelManagerView() {
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [enginePackages, setEnginePackages] = useState<EnginePackageStatus[]>([]);
+  const [runtimeStatus, setRuntimeStatus] = useState<EngineRuntimeStatus | null>(null);
+  const [runtimeLogs, setRuntimeLogs] = useState<string[]>([]);
+  const [showRuntimeLogs, setShowRuntimeLogs] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState<"import" | "scan" | null>(null);
   const [workingModelId, setWorkingModelId] = useState<string | null>(null);
   const [runtimeOperation, setRuntimeOperation] = useState<"download" | "import" | "verify" | "uninstall" | null>(null);
+  const [engineOperation, setEngineOperation] = useState<"start" | "stop" | "health" | null>(null);
   const [progress, setProgress] = useState<ModelScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -64,10 +73,44 @@ export function ModelManagerView() {
     }
   }, []);
 
+  const loadEngineStatus = useCallback(async () => {
+    try {
+      setRuntimeStatus(await bridge.getEngineStatus());
+    } catch (caught) {
+      setError(errorMessage(caught, "The llama.cpp runtime status could not be loaded."));
+    }
+  }, []);
+
   useEffect(() => {
     void loadModels();
     void loadEnginePackages();
-  }, [loadEnginePackages, loadModels]);
+    void loadEngineStatus();
+  }, [loadEnginePackages, loadEngineStatus, loadModels]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlistenState: () => void = () => {};
+    let unlistenLogs: () => void = () => {};
+    void bridge.onEngineStateChanged((status) => setRuntimeStatus(status)).then((unlisten) => {
+      if (disposed) unlisten(); else unlistenState = unlisten;
+    });
+    void bridge.onEngineLogLines((batch) => {
+      setRuntimeLogs((current) => [...current, ...batch.lines].slice(-200));
+    }).then((unlisten) => {
+      if (disposed) unlisten(); else unlistenLogs = unlisten;
+    });
+    return () => {
+      disposed = true;
+      unlistenState();
+      unlistenLogs();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (engineOperation !== "start") return;
+    const timer = window.setInterval(() => void loadEngineStatus(), 500);
+    return () => window.clearInterval(timer);
+  }, [engineOperation, loadEngineStatus]);
 
   const filteredModels = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
@@ -171,6 +214,7 @@ export function ModelManagerView() {
     try {
       const installed = await bridge.installEnginePackage(packageStatus.manifest.id);
       await loadEnginePackages();
+      await loadEngineStatus();
       setNotice(`llama.cpp ${installed.version} CPU runtime installed and verified.`);
     } catch (caught) {
       setError(errorMessage(caught, "The llama.cpp runtime could not be installed."));
@@ -187,6 +231,7 @@ export function ModelManagerView() {
       setRuntimeOperation("import");
       const installed = await bridge.importEnginePackage(packageStatus.manifest.id, path);
       await loadEnginePackages();
+      await loadEngineStatus();
       setNotice(`Offline llama.cpp ${installed.version} CPU runtime installed and verified.`);
     } catch (caught) {
       setError(errorMessage(caught, "The offline llama.cpp package could not be installed."));
@@ -217,11 +262,81 @@ export function ModelManagerView() {
     try {
       await bridge.uninstallEnginePackage(packageStatus.manifest.id);
       await loadEnginePackages();
+      await loadEngineStatus();
       setNotice(`llama.cpp ${packageStatus.manifest.version} runtime uninstalled. Model files were not changed.`);
     } catch (caught) {
       setError(errorMessage(caught, "The llama.cpp runtime could not be uninstalled."));
     } finally {
       setRuntimeOperation(null);
+    }
+  }
+
+  async function startModel(model: ModelRecord) {
+    clearMessages();
+    setWorkingModelId(model.id);
+    setEngineOperation("start");
+    setRuntimeLogs([]);
+    setShowRuntimeLogs(false);
+    try {
+      const status = await bridge.startEngine(model.id);
+      setRuntimeStatus(status);
+      setNotice(`${model.displayName} is loaded in llama.cpp ${status.backendVersion ?? ""}.`.trim());
+    } catch (caught) {
+      try {
+        const status = await bridge.getEngineStatus();
+        setRuntimeStatus(status);
+        if (status.lifecycle === "stopped") {
+          setNotice("Model loading was cancelled. Retained logs are still available.");
+        } else {
+          setError(errorMessage(caught, "The model could not be loaded into llama.cpp."));
+        }
+      } catch {
+        setError(errorMessage(caught, "The model could not be loaded into llama.cpp."));
+      }
+    } finally {
+      setWorkingModelId(null);
+      setEngineOperation(null);
+    }
+  }
+
+  async function stopRuntime() {
+    if (!runtimeStatus?.sessionId) return;
+    clearMessages();
+    setEngineOperation("stop");
+    try {
+      const status = await bridge.stopEngine(runtimeStatus.sessionId);
+      setRuntimeStatus(status);
+      setNotice("The llama.cpp session stopped. Retained logs are still available.");
+    } catch (caught) {
+      setError(errorMessage(caught, "The llama.cpp session could not be stopped."));
+    } finally {
+      setEngineOperation(null);
+    }
+  }
+
+  async function checkRuntimeHealth() {
+    clearMessages();
+    setEngineOperation("health");
+    try {
+      const health = await bridge.getEngineHealth();
+      setNotice(health.detail);
+    } catch (caught) {
+      setError(errorMessage(caught, "The llama.cpp health check failed."));
+    } finally {
+      setEngineOperation(null);
+    }
+  }
+
+  async function toggleRuntimeLogs() {
+    const next = !showRuntimeLogs;
+    setShowRuntimeLogs(next);
+    if (next && runtimeStatus?.sessionId) {
+      try {
+        const snapshot = await bridge.getEngineLogs(runtimeStatus.sessionId);
+        setRuntimeLogs(snapshot.lines.slice(-200));
+      } catch (caught) {
+        setError(errorMessage(caught, "The retained engine logs could not be loaded."));
+      }
     }
   }
 
@@ -267,6 +382,16 @@ export function ModelManagerView() {
         />
       ))}
 
+      {runtimeStatus && <RuntimeSession
+        logs={runtimeLogs}
+        operation={engineOperation}
+        showLogs={showRuntimeLogs}
+        status={runtimeStatus}
+        onHealth={() => void checkRuntimeHealth()}
+        onStop={() => void stopRuntime()}
+        onToggleLogs={() => void toggleRuntimeLogs()}
+      />}
+
       <div className="library-summary">
         <div><span>Indexed</span><strong>{models.length}</strong></div>
         <div><span>Ready</span><strong>{readyCount}</strong></div>
@@ -281,12 +406,21 @@ export function ModelManagerView() {
             <tbody>{filteredModels.map((model) => {
               const metadata = modelMetadataLabels(model);
               const working = workingModelId === model.id;
+              const engineActive = isEngineActive(runtimeStatus);
+              const loadedHere = runtimeStatus?.modelId === model.id;
               return <tr key={model.id}>
                 <td><div className="model-primary"><strong>{model.displayName}</strong><span title={model.path}>{model.path}</span></div></td>
                 <td><div className="model-metadata">{metadata.length > 0 ? metadata.map((label) => <span key={label}>{label}</span>) : <em>Metadata unavailable</em>}</div></td>
                 <td className="model-size">{formatBytes(model.sizeBytes)}</td>
                 <td><div className="verification-cell"><span className={`model-state ${model.verificationState}`}>{stateLabels[model.verificationState]}</span>{model.verificationError && <small title={model.verificationError}>{model.verificationError}</small>}</div></td>
                 <td><div className="row-actions">
+                  <button
+                    className={`icon-button ${loadedHere && engineActive ? "danger-action" : ""}`}
+                    disabled={(working && !(loadedHere && engineActive)) || (engineOperation !== null && !(engineOperation === "start" && loadedHere && engineActive)) || model.verificationState !== "ready" || (engineActive && !loadedHere)}
+                    onClick={() => loadedHere && engineActive ? void stopRuntime() : void startModel(model)}
+                    title={loadedHere && engineActive ? "Stop loaded model" : engineActive ? "Another model is loaded" : "Load model"}
+                    type="button"
+                  >{working && engineOperation === "start" ? <LoaderCircle className="spin" size={16} /> : loadedHere && engineActive ? <Square size={15} /> : <Play size={16} />}</button>
                   <button className="icon-button" disabled={working} onClick={() => void reverify(model)} title="Reverify model" type="button">{working ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}</button>
                   <button className="icon-button danger-action" disabled={working} onClick={() => void removeRecord(model)} title="Remove library record" type="button"><Trash2 size={16} /></button>
                 </div></td>
@@ -353,6 +487,63 @@ function RuntimePackage({
       </>}
     </div>
   </section>;
+}
+
+function RuntimeSession({
+  status,
+  logs,
+  operation,
+  showLogs,
+  onHealth,
+  onStop,
+  onToggleLogs,
+}: {
+  status: EngineRuntimeStatus;
+  logs: string[];
+  operation: "start" | "stop" | "health" | null;
+  showLogs: boolean;
+  onHealth: () => void;
+  onStop: () => void;
+  onToggleLogs: () => void;
+}) {
+  const active = isEngineActive(status);
+  const tone = status.lifecycle === "ready"
+    ? "ready"
+    : ["crashed", "error"].includes(status.lifecycle)
+      ? "invalid"
+      : status.lifecycle === "notInstalled" ? "missing" : "installing";
+  const label = {
+    notInstalled: "Unavailable",
+    installed: "Idle",
+    starting: "Starting",
+    loadingModel: "Loading",
+    ready: "Ready",
+    busy: "Busy",
+    stopping: "Stopping",
+    stopped: "Stopped",
+    crashed: "Crashed",
+    recovering: "Recovering",
+    error: "Error",
+  }[status.lifecycle];
+  return <>
+    <section className="runtime-session">
+      <span className="runtime-icon"><Activity size={19} /></span>
+      <div className="runtime-copy">
+        <div><strong>{status.modelName ?? "llama.cpp engine"}</strong><span className={`model-state ${tone}`}>{label}</span></div>
+        <p>{status.backendVersion ? `${status.backendVersion} - CPU` : status.detail}</p>
+      </div>
+      <div className="runtime-actions">
+        {status.sessionId && <button className={`icon-button ${showLogs ? "active-control" : ""}`} onClick={onToggleLogs} title="Retained engine logs" type="button"><SquareTerminal size={17} /></button>}
+        {status.lifecycle === "ready" && <button className="icon-button" disabled={operation !== null} onClick={onHealth} title="Check engine health" type="button">{operation === "health" ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={17} />}</button>}
+        {active && <button className="icon-button danger-action" disabled={operation === "stop"} onClick={onStop} title="Stop engine" type="button">{operation === "stop" ? <LoaderCircle className="spin" size={16} /> : <Square size={15} />}</button>}
+      </div>
+    </section>
+    {showLogs && status.sessionId && <div className="runtime-log-view"><div><SquareTerminal size={15} /><strong>Engine log</strong><span>{logs.length} retained line{logs.length === 1 ? "" : "s"}</span></div><pre>{logs.length > 0 ? logs.join("\n") : "No engine output captured."}</pre></div>}
+  </>;
+}
+
+function isEngineActive(status: EngineRuntimeStatus | null): boolean {
+  return status !== null && ["starting", "loadingModel", "ready", "busy", "stopping", "recovering"].includes(status.lifecycle);
 }
 
 function ScanProgress({ progress, onCancel }: { progress: ModelScanProgress; onCancel: () => void }) {

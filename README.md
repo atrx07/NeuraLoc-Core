@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, runtime checkpoint in progress. Hardware/settings functionality, local GGUF import and folder scanning, bounded metadata inspection, hardened owned processes, and verified install/import/reverify/uninstall of the pinned llama.cpp Windows x64 CPU package work. Starting llama.cpp, loading a model, the model selector, streaming chat, prompt import, conversation history, and the model download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, runtime checkpoint in progress. Hardware/settings functionality, local GGUF indexing, bounded metadata inspection, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, loopback health/identity checks, lifecycle events, and retained logs are implemented. A real tensor-bearing model-load/inference integration test, the Chat model selector, streaming generation, prompts, conversation history, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 

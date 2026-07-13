@@ -1009,6 +1009,8 @@ mod tests {
     #[tokio::test]
     #[ignore = "downloads the pinned official llama.cpp archive"]
     async fn installs_verifies_and_uninstalls_the_pinned_package() {
+        use crate::processes::{ProcessManager, SpawnOptions};
+
         let directory = TestDirectory::new();
         let database = Arc::new(Database::open(&directory.0.join("test.db")).unwrap());
         let service = EnginePackageService::new(database, &directory.0).unwrap();
@@ -1020,6 +1022,20 @@ mod tests {
             .files
             .iter()
             .any(|file| file.path == "llama-server.exe"));
+        let version_logs = ProcessManager::default()
+            .run_owned_probe(
+                "official llama.cpp version probe",
+                &Path::new(&installed.install_path).join("llama-server.exe"),
+                &["--version".into(), "--help".into()],
+                SpawnOptions::default(),
+                Duration::from_secs(15),
+            )
+            .await
+            .unwrap();
+        assert!(
+            version_logs.iter().any(|line| line.contains("9986")),
+            "official help output: {version_logs:#?}"
+        );
         service.verify(package_id).await.unwrap();
         service.uninstall(package_id).await.unwrap();
         assert!(service.statuses().unwrap()[0].installation.is_none());

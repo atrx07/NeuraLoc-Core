@@ -17,6 +17,7 @@ pub struct EngineCapabilities {
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
     pub executable: PathBuf,
+    pub expected_version: String,
     pub environment: BTreeMap<String, String>,
 }
 

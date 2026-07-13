@@ -284,8 +284,11 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `cancel_model_scan` | scan ID | accepted/current state |
 | `reverify_model` | model ID | updated model summary |
 | `remove_model_record` | model ID | metadata removal result |
-| `start_engine` | engine/model/device/settings | engine session |
-| `stop_engine` | engine session ID | final state |
+| `get_engine_status` | none | package/session lifecycle and identities |
+| `get_engine_health` | none | owned loopback readiness/identity result |
+| `start_engine` | model ID, optional context/threads | ready engine status |
+| `stop_engine` | engine session ID | final engine status |
+| `get_engine_logs` | engine session ID | bounded redacted log snapshot |
 | `submit_job` | typed job request | job ID |
 | `cancel_job` | job ID | accepted/current state |
 | `list_prompts` | search/filter | prompt summaries |
@@ -296,7 +299,7 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `send_chat_message` | conversation/message/settings | job ID |
 | `get_diagnostics` | redaction level | diagnostics bundle preview |
 
-Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes:
+Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes. Model scan progress plus engine state/log events are implemented; the remaining names are contracts for later phases:
 
 - `hardware://updated`
 - `engine://state-changed`
@@ -329,8 +332,8 @@ Recovery is bounded. A crash may restart at most twice within ten minutes by def
 
 ## Internal transport and ports
 
-Adapters reserve a loopback port by binding port `0`, retaining the listener until immediately before spawn where backend behavior permits. If an engine insists on choosing its own port, the manager probes and retries without killing the occupant. Health and ownership tokens determine whether a previous NeuraLoc-Core process is reusable.
+Adapters reserve a loopback port by binding port `0`, retaining the listener until immediately before spawn where backend behavior permits. The llama.cpp adapter binds only `127.0.0.1`, passes a random API key through the cleared child environment, waits on `/health`, challenges `/props` with a wrong key, then requires the correct key to report the canonical selected model and pinned build. Port conflicts retry without killing the occupant; the renderer never receives the endpoint or token.
 
 ## Testing architecture
 
-Unit tests cover pure policy and parsing. Integration tests launch tiny fixture executables that emit deterministic logs, bind ports, crash, or simulate OOM. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database.
+Unit tests cover pure policy and parsing. Integration tests launch copied deterministic executables for bounded logs, probes, natural exit, crash, and forced stop. An ignored network test downloads the official pinned package and verifies its real build output and file lifecycle. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database. A small redistributable tensor-bearing GGUF is still needed for automated model-load and health integration.
