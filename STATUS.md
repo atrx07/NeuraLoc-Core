@@ -52,11 +52,14 @@ This checkpoint is not yet a local inference product. GGUF models can be indexed
 - Evidence-based capability states for CPU fallback, CUDA LLM/image routes, Vulkan LLM route, and OpenVINO NPU route.
 - Hardware snapshot caching plus an explicit refresh operation.
 - Central owned-process manager that:
-  - starts executables without a shell and passes arguments as an array;
-  - nulls stdin and captures stdout/stderr;
-  - keeps a bounded 2,000-line in-memory log per process;
+  - requires canonical absolute executable paths, starts without a shell, and bounds argument/environment input;
+  - clears the inherited environment, restores a minimal platform baseline, and applies only adapter-provided entries;
+  - nulls stdin and captures stdout/stderr with 16 KiB line and 2,000-line per-process bounds;
+  - redacts common token, API-key, and authorization markers before retaining logs;
   - assigns UUID ownership IDs and records PID/start time;
-  - provides summaries and logs internally;
+  - supervises natural exits, records exit code/end time, and distinguishes stopped, crashed, and error states;
+  - provides lifecycle updates, summaries, active counts, and retained logs internally;
+  - allows an adapter grace period before force-stopping only the owned child;
   - limits native probes to four seconds;
   - stops all registered processes on normal application exit.
 - Engine lifecycle enum and shared `InferenceEngine`/`ChatEngine` traits with typed configuration, start request, health, token chunks, and usage.
@@ -248,7 +251,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 2 Vitest files, 5 tests for adaptive byte formatting, missing telemetry, parameter counts, and context lengths.
-- Rust: 13 tests covering NVIDIA CSV parsing, resource fit, migration idempotency/version-1 upgrade, bounded GGUF parsing/failures, path safety/large-size handling, persistence, hard-link deduplication, invalid/missing reconciliation, and scan cancellation.
+- Rust: 18 tests covering NVIDIA CSV parsing, resource fit, migration idempotency/version-1 upgrade, bounded GGUF parsing/failures, path safety/large-size handling, persistence, hard-link deduplication, invalid/missing reconciliation, scan cancellation, natural process exit, crash tracking, bounded/redacted process logs, and forced shutdown.
 
 The Tauri debug build also runs the production frontend build as its configured pre-build command.
 
@@ -270,7 +273,7 @@ Checkpoint size: 20,422,656 bytes. This is a debug executable, not a signed inst
 - Hardware discovery is partial: no Vulkan loader enumeration, Intel iGPU details, disks, battery/power state, instruction-set report, OpenVINO runtime probe, or robust driver/runtime version inventory exists yet.
 - CUDA readiness currently means `nvidia-smi` responded; a compatible llama.cpp CUDA package has not been installed or validated.
 - NPU detection is name/text based through `pnputil`; model compatibility still requires a future OpenVINO compile probe.
-- Process states are not advanced after spawn, natural child exit is not reaped into a crashed/stopped state, logs are not exposed through IPC, and stop currently waits before force-killing rather than sending an adapter-specific graceful shutdown request.
+- Process lifecycle and retained logs are not exposed through IPC yet. The manager supports an adapter grace period, but the llama.cpp adapter still needs to issue its protocol-specific shutdown request before force-stop fallback and emit engine events.
 - The scheduler is a resource classification scaffold, not a queue or job runner. `activeJobs` is fixed at zero.
 - Model scan events are sequenced and consumed, but engine/chat/download events, throttling, and broader stale-sequence handling remain unfinished.
 - Settings and models have repository/service implementations. Prompt, conversation/message, download, engine-package, output, benchmark, and job repositories remain unfinished.

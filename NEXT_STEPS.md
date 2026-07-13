@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Immediate next work: step 2, the verified llama.cpp package installer and owned lifecycle adapter. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
+Step 2 is in progress. ProcessManager hardening is complete for canonical spawning, allow-listed environments, natural-exit/crash tracking, exit metadata, bounded/redacted logs, explicit lifecycle updates, adapter grace periods, forced shutdown, and deterministic process tests. Immediate next work is the verified llama.cpp package manifest/repository/installer, followed by the concrete adapter, health checks, engine events, and model loading. Complete the remaining advanced metadata/compatibility work in step 3 alongside runtime validation, then connect step 4's model selector.
 
 ## Dependency Map
 
@@ -80,7 +80,7 @@ Dependencies: shared preparation. It can be built alongside step 1.
 ### Process/lifecycle hardening
 
 - Implement a concrete llama.cpp adapter behind `InferenceEngine` and `ChatEngine`.
-- Harden `ProcessManager`: detect natural exit, update lifecycle state, capture exit code, expose bounded/redacted logs, support adapter-specific graceful shutdown before forced termination, and emit process/engine events.
+- Harden `ProcessManager`: detect natural exit, update lifecycle state, capture exit code, expose bounded/redacted logs, support adapter-specific graceful shutdown before forced termination, and emit process/engine events. Natural-exit tracking, lifecycle/exit metadata, bounded/redacted retention, and grace/force-stop behavior are complete; IPC exposure and process/engine events remain.
 - Launch by canonical executable path with argument arrays and an allow-listed environment. Never use a shell.
 - Reserve loopback port `0`, authenticate/identify the owned server where possible, poll health with a bounded timeout, and never kill another process by name or port.
 - Implement explicit transitions through installed, starting, loading, ready, busy, stopping, stopped, crashed, and error states.

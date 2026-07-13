@@ -19,7 +19,7 @@ pub async fn get_app_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot,
         version: env!("CARGO_PKG_VERSION"),
         database_ready: true,
         first_run_complete: false,
-        running_engines: state.processes.summaries().await.len(),
+        running_engines: state.processes.active_count().await,
         active_jobs: 0,
     })
 }
