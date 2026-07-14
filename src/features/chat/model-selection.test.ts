@@ -55,6 +55,7 @@ describe("selected model readiness", () => {
     modelId: "ready",
     modelName: "Qwen3 4B",
     backendVersion: "b9986",
+    contextSize: 4096,
     startedAt: "2026-07-14T00:00:00Z",
     endedAt: null,
     exitCode: null,

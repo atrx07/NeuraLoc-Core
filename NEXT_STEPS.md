@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, remembers the last choice, loads/switches/unloads the selected model, gates the composer on the matching ready session, streams sequenced token batches, and cancels the active generation. Immediate next work is Step 5 prompt import/versioning and Step 7 conversation/message persistence, followed by advanced selector fit/context behavior and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, remembers the last choice, loads/switches/unloads the selected model, gates the composer on the matching ready session, streams sequenced token batches, cancels the active generation, and shows the loaded context capacity with exact completed-turn and explicitly approximate in-progress usage. Immediate next work is Step 5 prompt import/versioning and Step 7 conversation/message persistence, followed by enforced context strategies, advanced selector fit behavior, and the verified catalog.
 
 ## Dependency Map
 
@@ -148,7 +148,7 @@ Dependencies: shared repository/path work from step 1. Can run in parallel with 
 
 Dependencies: steps 2, 4, and 5 plus working event sequencing.
 
-Basic streaming status: completed on 2026-07-14 using the no-custom-prompt path. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, emits usage and terminal state, and cancels one active generation. Chat renders ephemeral user/assistant messages and ignores stale event sequences. Prompt compilation, durable jobs/messages, retry, context management, OOM fallback, and crash recovery remain before the full acceptance gate is complete.
+Basic streaming status: completed on 2026-07-14 using the no-custom-prompt path, with context visibility added on 2026-07-15. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, emits usage and terminal state, and cancels one active generation. Chat renders ephemeral user/assistant messages, ignores stale event sequences, and presents the loaded context capacity plus exact or explicitly approximate live usage. Prompt compilation, durable jobs/messages, retry, enforced context management, OOM fallback, and crash recovery remain before the full acceptance gate is complete.
 
 ### Backend
 

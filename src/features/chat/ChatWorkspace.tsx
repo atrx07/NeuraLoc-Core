@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
+  Activity,
   AlertTriangle,
   ArrowUp,
   Bot,
+  Cpu,
   Download,
+  Gauge,
   ImagePlus,
   LoaderCircle,
   Plus,
@@ -23,6 +26,7 @@ import type {
   EngineRuntimeStatus,
   ModelRecord,
 } from "../../types/domain";
+import { calculateChatMetrics } from "./chat-metrics";
 import {
   chatModelLabel,
   groupChatModels,
@@ -157,6 +161,11 @@ export function ChatWorkspace() {
   const modelReady = isSelectedModelReady(selectedModelId, runtimeStatus);
   const generating = activeJobId !== null;
   const runtimeAvailable = runtimeStatus?.lifecycle !== "notInstalled";
+  const runtimeActive = isEngineActive(runtimeStatus);
+  const chatMetrics = useMemo(
+    () => calculateChatMetrics(messages, runtimeActive ? runtimeStatus?.contextSize ?? null : null),
+    [messages, runtimeActive, runtimeStatus?.contextSize],
+  );
 
   async function selectModel(value: string) {
     if (value === "manage") {
@@ -370,7 +379,7 @@ export function ChatWorkspace() {
         {messages.map((message) => <article className={`chat-message ${message.role}`} key={message.id}>
           <div className="message-avatar">{message.role === "user" ? <User size={15} /> : <Bot size={15} />}</div>
           <div className="message-body">
-            <header><strong>{message.role === "user" ? "You" : selectedModel?.displayName ?? "Assistant"}</strong>{message.usage && <small>{usageLabel(message.usage)}</small>}</header>
+            <header><strong>{message.role === "user" ? "You" : selectedModel?.displayName ?? "Assistant"}</strong></header>
             {message.content
               ? <div className="message-content">{message.content}</div>
               : message.state === "complete"
@@ -378,11 +387,34 @@ export function ChatWorkspace() {
                 : message.state === "cancelled"
                   ? <div className="message-terminal">Generation stopped</div>
                   : message.state === "error"
-                    ? <div className="message-terminal error">Generation failed</div>
-                    : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
+                  ? <div className="message-terminal error">Generation failed</div>
+                  : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
+            {message.usage && <footer className="message-usage">
+              <span>{message.usage.outputTokens.toLocaleString()} output</span>
+              <span>{message.usage.promptTokens.toLocaleString()} prompt</span>
+              <span>{message.usage.tokensPerSecond > 0 ? `${message.usage.tokensPerSecond.toFixed(1)} tok/s` : "Speed unavailable"}</span>
+            </footer>}
           </div>
         </article>)}
       </div>}
+      </div>
+
+      <div aria-label="Live conversation metrics" className="chat-status-strip">
+        <div className="context-status" title="Current conversation tokens and loaded context capacity">
+          <Gauge size={13} />
+          <span>Context</span>
+          <strong>{tokenMetric(chatMetrics.contextTokens, chatMetrics.contextApproximate)} / {tokenMetric(chatMetrics.contextCapacity)}</strong>
+          <progress
+            aria-label="Context window usage"
+            max={chatMetrics.contextCapacity ?? 1}
+            value={Math.min(chatMetrics.contextTokens ?? 0, chatMetrics.contextCapacity ?? 1)}
+          />
+          <small>{chatMetrics.contextPercent === null ? "--" : `${chatMetrics.contextPercent}%`}</small>
+        </div>
+        <div title="Current generation state"><Activity size={13} /><span>{generating ? "Generating" : modelOperation === "load" ? "Loading" : modelReady ? "Ready" : "Idle"}</span></div>
+        <div title="Tokens in the latest response"><span>Output</span><strong>{tokenMetric(chatMetrics.outputTokens, chatMetrics.outputApproximate)}</strong></div>
+        <div title="Latest measured generation speed"><span>Speed</span><strong>{chatMetrics.tokensPerSecond && chatMetrics.tokensPerSecond > 0 ? `${chatMetrics.tokensPerSecond.toFixed(1)} tok/s` : "--"}</strong></div>
+        <div className="runtime-route" title="Active inference route and backend build"><Cpu size={13} /><span>{runtimeActive ? `CPU / ${runtimeStatus?.backendVersion ?? "llama.cpp"}` : "CPU / offline"}</span></div>
       </div>
 
       <div className="composer">
@@ -435,9 +467,9 @@ function messageState(state: ChatGenerationState): MessageState {
   return states[state];
 }
 
-function usageLabel(usage: ChatUsage): string {
-  const speed = usage.tokensPerSecond > 0 ? ` - ${usage.tokensPerSecond.toFixed(1)} tok/s` : "";
-  return `${usage.outputTokens} tokens${speed}`;
+function tokenMetric(value: number | null, approximate = false): string {
+  if (value === null) return "--";
+  return `${approximate ? "~" : ""}${value.toLocaleString()}`;
 }
 
 function readLastModelId(): string | null {

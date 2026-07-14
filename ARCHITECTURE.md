@@ -284,7 +284,7 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `cancel_model_scan` | scan ID | accepted/current state |
 | `reverify_model` | model ID | updated model summary |
 | `remove_model_record` | model ID | metadata removal result |
-| `get_engine_status` | none | package/session lifecycle and identities |
+| `get_engine_status` | none | package/session lifecycle, identities, backend version, and loaded context capacity |
 | `get_engine_health` | none | owned loopback readiness/identity result |
 | `start_engine` | model ID, optional context/threads | ready engine status |
 | `stop_engine` | engine session ID | final engine status |

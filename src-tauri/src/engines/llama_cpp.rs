@@ -49,6 +49,7 @@ struct ActiveSession {
     api_key: String,
     model_path: PathBuf,
     backend_version: String,
+    context_size: u32,
 }
 
 #[derive(Default)]
@@ -63,6 +64,7 @@ pub(crate) struct LlamaCppSnapshot {
     pub process_id: String,
     pub model_path: PathBuf,
     pub backend_version: String,
+    pub context_size: u32,
     pub process: ProcessSummary,
 }
 
@@ -115,6 +117,7 @@ impl LlamaCppEngine {
             process_id: session.process_id,
             model_path: session.model_path,
             backend_version: session.backend_version,
+            context_size: session.context_size,
             process,
         })
     }
@@ -451,6 +454,12 @@ impl InferenceEngine for LlamaCppEngine {
             let port = reservation.local_addr()?.port();
             let api_key = Uuid::new_v4().simple().to_string();
             let args = build_server_args(&model_path, port, &request.options)?;
+            let context_size = request
+                .options
+                .get("context_size")
+                .map(|value| bounded_number(value, "context size", 256, 1_048_576))
+                .transpose()?
+                .unwrap_or(4_096);
             let mut environment = prepared.environment.clone();
             environment.insert("LLAMA_API_KEY".into(), api_key.clone());
             drop(reservation);
@@ -474,6 +483,7 @@ impl InferenceEngine for LlamaCppEngine {
                 api_key,
                 model_path: model_path.clone(),
                 backend_version: prepared.expected_version.clone(),
+                context_size,
             };
             self.state.lock().await.session = Some(session.clone());
 

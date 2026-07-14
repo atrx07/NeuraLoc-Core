@@ -220,6 +220,7 @@ export interface EngineRuntimeStatus {
   modelId: string | null;
   modelName: string | null;
   backendVersion: string | null;
+  contextSize: number | null;
   startedAt: string | null;
   endedAt: string | null;
   exitCode: number | null;

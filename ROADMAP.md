@@ -17,7 +17,7 @@ Exit gate: frontend build/tests pass; Rust format, tests, and clippy pass on a R
 
 ## Phase 2: LLM Chat
 
-Status: in progress. Local GGUF indexing, basic metadata inspection, owned-process hardening, verified Windows x64 CPU runtime installation, concrete llama.cpp load/health/stop/log lifecycle, the Chat selector, bounded streaming/cancellation, and usage reporting are implemented. A real Qwen3 4B load/stream/stop/no-orphan integration passed locally. Conversation persistence, branches/exports, context strategies, advanced model/session estimates, and OOM recovery remain pending.
+Status: in progress. Local GGUF indexing, basic metadata inspection, owned-process hardening, verified Windows x64 CPU runtime installation, concrete llama.cpp load/health/stop/log lifecycle, the Chat selector, bounded streaming/cancellation, usage reporting, and live loaded-context visibility are implemented. A real Qwen3 4B load/stream/stop/no-orphan integration passed locally. Conversation persistence, branches/exports, enforced context strategies, advanced model/session estimates, and OOM recovery remain pending.
 
 - llama.cpp adapter, engine package installer, GGUF import/indexing.
 - Streaming chat, cancellation, conversation branches, exports.

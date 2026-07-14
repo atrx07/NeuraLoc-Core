@@ -335,6 +335,7 @@ function demoEngineStatus(): EngineRuntimeStatus {
     modelId: null,
     modelName: null,
     backendVersion: null,
+    contextSize: null,
     startedAt: null,
     endedAt: null,
     exitCode: null,

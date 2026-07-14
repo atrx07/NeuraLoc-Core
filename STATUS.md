@@ -1,6 +1,6 @@
 # NeuraLoc-Core Status
 
-Status date: 2026-07-14
+Status date: 2026-07-15
 
 Project root: `C:\Users\atrx07\atrx\NeuraLoc-Core`
 
@@ -24,7 +24,7 @@ This checkpoint is usable for ephemeral local chat, but it is not yet a complete
 - Functional Settings view for theme, performance profile, model retention, idle timeout, internet access, web search, and local API state.
 - Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, llama.cpp package controls, per-model load/stop controls, runtime health, lifecycle state, and retained-log inspection.
 - Functional Chat model selector backed by the persisted model library, grouped ready/unavailable choices, last-used preference, runtime reuse/load/switch/unload controls, visible lifecycle state, and a composer gate tied to the selected ready session.
-- Ephemeral Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, plain-text rendering, and prompt/output token plus tokens-per-second usage when llama.cpp reports it. The mounted Chat workspace retains its in-memory messages and generation listeners while navigating elsewhere in the app. The composer remains pinned while the message viewport scrolls independently, and streaming follows the latest token only while the user stays near the bottom. Messages currently live only in renderer memory and do not survive an application restart.
+- Ephemeral Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, plain-text rendering, and prompt/output token plus tokens-per-second usage when llama.cpp reports it. Usage is rendered at the end of each assistant response. A compact live strip reports the loaded context capacity, exact completed-turn usage, explicitly approximate in-progress usage, output progress, generation state, measured speed, and active CPU/backend route. The mounted Chat workspace retains its in-memory messages and generation listeners while navigating elsewhere in the app. The composer remains pinned while the message viewport scrolls independently, and streaming follows the latest token only while the user stays near the bottom. Messages currently live only in renderer memory and do not survive an application restart.
 - Catalog and Downloads tabs remain visibly disabled until the verified catalog checkpoint.
 - Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, and native model imports are unavailable.
 - Typed frontend domain interfaces for app snapshots, settings, hardware, local models, GGUF metadata, engine packages, runtime lifecycle/health/logs, chat requests/results/usage/events, scan/engine events, navigation, and IPC errors.
@@ -47,7 +47,7 @@ This checkpoint is usable for ephemeral local chat, but it is not yet a complete
 - Installation records a SHA-256 inventory for every extracted file. Reverify rejects missing, changed, linked, or added files, and startup reconciles interrupted or missing installations.
 - Concrete llama.cpp CPU adapter and runtime service that reverify the selected model and complete package inventory, run a terminating `--version --help` build probe, allow only bounded context/thread options, and launch only the canonical packaged executable.
 - The adapter reserves loopback port `0`, binds only `127.0.0.1`, passes a random API key through the cleared child environment, polls `/health`, and requires authenticated `/props` to report the expected canonical model path and `b9986` build before declaring ready.
-- Runtime commands expose status, explicit health, start, stop, and bounded retained logs. Package uninstall is rejected while startup or a live session owns the runtime.
+- Runtime commands expose status including the loaded context capacity, explicit health, start, stop, and bounded retained logs. Package uninstall is rejected while startup or a live session owns the runtime.
 - Model-load cancellation can stop the owned process while readiness polling is in flight. Stop uses a short adapter grace interval before the process manager force-stops only its tracked child.
 - `ChatEngine` posts bounded OpenAI-compatible message payloads to the Rust-internal authenticated `/v1/chat/completions` endpoint, disables model thinking through bounded chat-template kwargs so Qwen3 returns visible answer text, parses bounded UTF-8 SSE data lines, batches token events every 16 ms or 256 bytes, records usage, rejects truncated or visible-text-empty streams, and supports one active cancellable generation.
 - Typed `start_chat_generation` and `cancel_chat_generation` commands validate job/session/message identity, role/content/count/output limits, require the matching ready model session, and emit sequenced token, usage, and terminal-state events.
@@ -117,6 +117,8 @@ NeuraLoc-Core/
 |   |-- features/
 |   |   |-- chat/
 |   |   |   |-- ChatWorkspace.tsx
+|   |   |   |-- chat-metrics.test.ts
+|   |   |   |-- chat-metrics.ts
 |   |   |   |-- model-selection.ts
 |   |   |   `-- model-selection.test.ts
 |   |   |-- hardware/HardwareView.tsx
@@ -253,7 +255,7 @@ Indexes exist for conversation recency, conversation messages, model kind, model
 | `import_engine_package` | package ID and granted `.zip` path | `EnginePackageRecord` | Performs the same exact size/checksum/extraction/install flow for an offline archive |
 | `verify_engine_package` | package ID | `EnginePackageRecord` | Verifies the exact installed file set, sizes, and SHA-256 inventory |
 | `uninstall_engine_package` | package ID | none | Removes only the manifest-owned internal package directory and its database record |
-| `get_engine_status` | none | `EngineRuntimeStatus` | Returns package/session lifecycle, process/model identity, version, exit metadata, and detail |
+| `get_engine_status` | none | `EngineRuntimeStatus` | Returns package/session lifecycle, process/model identity, backend version, loaded context capacity, exit metadata, and detail |
 | `get_engine_health` | none | `EngineHealth` | Rechecks the owned loopback server and authenticated model/build identity |
 | `start_engine` | model ID with optional context/threads | `EngineRuntimeStatus` | Reverifies model/package/binary, launches the CPU server, and waits for owned ready state |
 | `stop_engine` | session ID | `EngineRuntimeStatus` | Stops only the matching retained owned session and returns its final state |
@@ -295,7 +297,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 
 Current automated tests:
 
-- Frontend: 3 Vitest files, 7 tests for adaptive byte formatting, missing telemetry, model metadata, selector grouping/labels, and selected-session readiness.
+- Frontend: 4 Vitest files, 10 tests for adaptive byte formatting, missing telemetry, model metadata, selector grouping/labels, selected-session readiness, and exact/approximate chat context metrics.
 - Rust: 30 passing default tests plus two ignored opt-in integration tests. Coverage includes bounded chat request validation, non-thinking chat payloads, split SSE decoding, usage extraction, owned build probes, pinned-version parsing, fixed/bounded llama.cpp arguments, and `/props` model/build identity validation alongside the hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
@@ -310,7 +312,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 29,455,872 bytes, rebuilt on 2026-07-14 after the visible-response and navigation-lifecycle fixes. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 29,459,456 bytes, rebuilt on 2026-07-15 after the chat context telemetry update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
@@ -338,7 +340,7 @@ Checkpoint size: 29,455,872 bytes, rebuilt on 2026-07-14 after the visible-respo
 - A redistributable tensor-bearing GGUF fixture for normal CI, graceful protocol-level request draining, conservative OOM fallback, and crash recovery. The environment-selected real-model load/stream/stop test is opt-in and passed locally.
 - Advanced model selector compatibility/fit estimates, disabled-state explanations, load estimates, and Rust-persisted preference. Basic library-backed selection and runtime control are implemented.
 - Markdown/text system-prompt import, YAML front matter, hashing, immutable versions, editing, searching, and selector binding.
-- Durable streaming chat persistence, retry, context budgeting, model-template options, Markdown rendering, reasoning presentation, and crash recovery. Basic streaming, token/state/usage events, generation stop, and ephemeral messages are implemented.
+- Durable streaming chat persistence, retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and crash recovery. Basic streaming, token/state/usage events, generation stop, ephemeral messages, and live context visibility are implemented.
 - Conversation/message repositories, history list, branches, titles, pinning, export, and crash-safe partial responses.
 - Signed model catalog, catalog refresh, recommendations, resumable downloads, verification, pause/retry, and installation.
 - Image generation, speech recognition, text-to-speech, gallery, downloads, and logs are visual empty states only.
