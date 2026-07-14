@@ -12,7 +12,10 @@ use crate::{
 
 use super::{
     llama_cpp::LlamaCppEngine,
-    traits::{EngineConfig, EngineHealth, EngineStartRequest, InferenceEngine},
+    traits::{
+        ChatEngine, ChatRequest, EngineConfig, EngineHealth, EngineStartRequest, InferenceEngine,
+        TokenSink, Usage,
+    },
 };
 
 pub const LLAMA_CPP_CPU_PACKAGE_ID: &str = "llama.cpp-b9986-windows-x86_64-cpu";
@@ -182,6 +185,18 @@ impl EngineRuntimeService {
 
     pub async fn health(&self) -> AppResult<EngineHealth> {
         self.adapter.health().await
+    }
+
+    pub async fn generate(&self, request: ChatRequest, sink: TokenSink) -> AppResult<Usage> {
+        self.adapter.generate(request, sink).await
+    }
+
+    pub async fn cancel_generation(&self, job_id: &str) -> AppResult<()> {
+        self.adapter.cancel(job_id).await
+    }
+
+    pub async fn active_generation_count(&self) -> usize {
+        self.adapter.active_job_count().await
     }
 
     pub async fn status(&self) -> AppResult<EngineRuntimeStatus> {

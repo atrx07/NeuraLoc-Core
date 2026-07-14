@@ -238,3 +238,54 @@ export interface EngineLogSnapshot {
 }
 
 export interface EngineLogBatch extends EngineLogSnapshot {}
+
+export type ChatRole = "system" | "user" | "assistant";
+
+export interface ChatMessageInput {
+  role: ChatRole;
+  content: string;
+}
+
+export type ChatGenerationState = "started" | "completed" | "cancelled" | "failed";
+
+export interface StartChatGenerationRequest {
+  jobId: string;
+  conversationId: string;
+  messageId: string;
+  sessionId: string;
+  messages: ChatMessageInput[];
+  maxOutputTokens: number;
+}
+
+export interface ChatUsage {
+  promptTokens: number;
+  outputTokens: number;
+  tokensPerSecond: number;
+}
+
+export interface ChatGenerationResult {
+  state: ChatGenerationState;
+  usage: ChatUsage | null;
+}
+
+export interface ChatTokenBatch {
+  jobId: string;
+  conversationId: string;
+  messageId: string;
+  text: string;
+}
+
+export interface ChatStateEvent {
+  jobId: string;
+  conversationId: string;
+  messageId: string;
+  state: ChatGenerationState;
+  error: string | null;
+}
+
+export interface ChatUsageEvent {
+  jobId: string;
+  conversationId: string;
+  messageId: string;
+  usage: ChatUsage;
+}

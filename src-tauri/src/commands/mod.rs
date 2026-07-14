@@ -1,4 +1,5 @@
 pub(crate) mod app_commands;
+pub(crate) mod chat_commands;
 pub(crate) mod engine_commands;
 pub(crate) mod engine_package_commands;
 pub(crate) mod hardware_commands;

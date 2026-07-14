@@ -33,6 +33,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_commands::get_app_snapshot,
+            commands::chat_commands::start_chat_generation,
+            commands::chat_commands::cancel_chat_generation,
             commands::engine_package_commands::list_engine_packages,
             commands::engine_package_commands::install_engine_package,
             commands::engine_package_commands::import_engine_package,

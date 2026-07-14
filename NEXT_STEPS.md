@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2 is in progress. ProcessManager hardening, the verified CPU package layer, and the concrete llama.cpp lifecycle are implemented: the adapter reverifies model/package files, probes the real pinned build, owns a CPU-only loopback server, authenticates `/props` model/build identity after `/health`, exposes typed status/health/start/stop/log commands, emits lifecycle/log events, supports load cancellation, and has Model Manager controls. Immediate next work is validation with a small real tensor-bearing GGUF, then streaming/cancellation through `ChatEngine`; complete advanced compatibility/fit work in step 3 and connect step 4's Chat model selector alongside that validation.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, remembers the last choice, loads/switches/unloads the selected model, gates the composer on the matching ready session, streams sequenced token batches, and cancels the active generation. Immediate next work is Step 5 prompt import/versioning and Step 7 conversation/message persistence, followed by advanced selector fit/context behavior and the verified catalog.
 
 ## Dependency Map
 
@@ -79,16 +79,16 @@ Dependencies: shared preparation. It can be built alongside step 1.
 
 ### Process/lifecycle hardening
 
-- Implement a concrete llama.cpp adapter behind `InferenceEngine` and `ChatEngine`. Lifecycle/health is implemented through `InferenceEngine`; streaming generation and request cancellation remain in `ChatEngine`.
+- Implement a concrete llama.cpp adapter behind `InferenceEngine` and `ChatEngine`. Lifecycle/health, bounded SSE streaming, usage extraction, and request cancellation are complete for the pinned CPU route.
 - Harden `ProcessManager`: natural exits, lifecycle/exit metadata, bounded/redacted logs, typed IPC exposure, lifecycle/log events, owned probes, grace/force-stop, and shutdown cleanup are implemented. Crash recovery and protocol-level request draining remain.
 - Launch by canonical executable path with fixed argument arrays and an allow-listed environment. Completed; the API key is environment-only and no shell is used.
 - Reserve loopback port `0`, authenticate/identify the owned server, poll health with a bounded timeout, and never kill another process by name or port. Completed with a wrong-key challenge plus authenticated `/props` model/build checks.
 - Implement explicit transitions through installed, starting, loading, ready, busy, stopping, stopped, crashed, and error states. Process-backed states are implemented; busy awaits generation and recovering awaits crash policy.
-- Guarantee `stop_all` on application exit and add deterministic process tests for successful exit, log redaction, crash, timeout/force-stop, owned probes, and shutdown. Add real-model load/cancel/crash fixtures once a small redistributable GGUF is selected.
+- Guarantee `stop_all` on application exit and add deterministic process tests for successful exit, log redaction, crash, timeout/force-stop, owned probes, and shutdown. An ignored environment-selected real-model load/stream/stop/no-orphan test is complete; a redistributable fixture plus load-cancel/crash cases remain.
 
 ### Acceptance gate
 
-- A verified llama.cpp package installs, reports its pinned build, and is entirely Rust-controlled with health, ownership, logs, cancellation, and stop behavior. The remaining gate is a successful load/stop with a small real tensor-bearing GGUF plus confirmation that no child remains.
+- A verified llama.cpp package installs, reports its pinned build, and is entirely Rust-controlled with health, ownership, logs, cancellation, and stop behavior. The gate passed locally with Qwen3 4B Q4_K_M on 2026-07-14, including streamed generation and confirmation that no owned child remained.
 
 ## 3. GGUF Metadata Detection (Basic Inspection Completed)
 
@@ -108,6 +108,8 @@ Dependencies: step 1. The preferred implementation may use the pinned llama.cpp 
 ## 4. Model Selector
 
 Dependencies: steps 1 and 3; step 2 is required before a model can be marked runnable.
+
+Basic selector status: completed on 2026-07-14. Chat is backed by persisted model records, groups ready and unavailable models, remembers the last selected ID separately from conversations, reuses the matching ready session, switches by stopping only the owned prior session, exposes Model Manager, and keeps the composer disabled until the selected session is ready. Advanced fit groups, projector/backend explanations, load estimates, and Rust-side preference persistence remain.
 
 - Build a reusable selector backed by model summaries, not raw database rows.
 - Show display name, family, quantization, size, context, verification state, installed backend readiness, estimated fit, and missing-projector warnings.
@@ -145,6 +147,8 @@ Dependencies: shared repository/path work from step 1. Can run in parallel with 
 ## 6. Streaming Chat
 
 Dependencies: steps 2, 4, and 5 plus working event sequencing.
+
+Basic streaming status: completed on 2026-07-14 using the no-custom-prompt path. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, emits usage and terminal state, and cancels one active generation. Chat renders ephemeral user/assistant messages and ignores stale event sequences. Prompt compilation, durable jobs/messages, retry, context management, OOM fallback, and crash recovery remain before the full acceptance gate is complete.
 
 ### Backend
 
@@ -198,9 +202,9 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 ## Recommended Checkpoints
 
 1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
-2. **Runtime checkpoint (integration validation remaining):** verified llama.cpp install + lifecycle/logging + model-load implementation; prove a real GGUF load/stop next.
-3. **Prompt checkpoint:** Markdown import/versioning + both selectors.
-4. **Chat checkpoint:** streaming/cancellation + conversation persistence.
+2. **Runtime checkpoint (completed 2026-07-14 for CPU):** verified llama.cpp install + lifecycle/logging + real Qwen load/stream/stop/no-orphan validation.
+3. **Prompt checkpoint (next):** Markdown import/versioning + prompt selector; the model selector is already connected.
+4. **Chat checkpoint (in progress):** basic streaming/cancellation is complete; conversation persistence, context management, retry, and crash recovery remain.
 5. **Catalog checkpoint:** signed metadata + resumable verified downloads.
 
 At every checkpoint run frontend build/tests, Rust format/check/test/clippy, migration tests from empty and prior schemas, fake-engine lifecycle tests where applicable, and a Tauri debug smoke test. Do not move to the next checkpoint with orphaned processes, destructive migration changes, unbounded file reads, or renderer-owned native/network access.

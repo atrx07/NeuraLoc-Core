@@ -4,6 +4,10 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AppSnapshot,
+  ChatGenerationResult,
+  ChatStateEvent,
+  ChatTokenBatch,
+  ChatUsageEvent,
   EnginePackageRecord,
   EnginePackageStatus,
   EngineHealth,
@@ -16,6 +20,7 @@ import type {
   ModelRecord,
   ModelScanProgress,
   ModelScanSummary,
+  StartChatGenerationRequest,
 } from "../types/domain";
 
 const defaultSettings: AppSettings = {
@@ -182,6 +187,45 @@ export const bridge = {
   async getEngineLogs(sessionId: string): Promise<EngineLogSnapshot> {
     if (!isTauri()) return { sessionId, processId: "demo", lines: [] };
     return invoke<EngineLogSnapshot>("get_engine_logs", { request: { sessionId } });
+  },
+
+  async startChatGeneration(
+    request: StartChatGenerationRequest,
+  ): Promise<ChatGenerationResult> {
+    if (!isTauri()) throw new Error("Local chat generation is available in the desktop app.");
+    return invoke<ChatGenerationResult>("start_chat_generation", { request });
+  },
+
+  async cancelChatGeneration(jobId: string): Promise<boolean> {
+    if (!isTauri()) return false;
+    return invoke<boolean>("cancel_chat_generation", { request: { jobId } });
+  },
+
+  async onChatToken(
+    callback: (batch: ChatTokenBatch, sequence: number) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<ChatTokenBatch>>("chat://token", (event) => {
+      callback(event.payload.payload, event.payload.sequence);
+    });
+  },
+
+  async onChatStateChanged(
+    callback: (state: ChatStateEvent, sequence: number) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<ChatStateEvent>>("chat://state-changed", (event) => {
+      callback(event.payload.payload, event.payload.sequence);
+    });
+  },
+
+  async onChatUsage(
+    callback: (usage: ChatUsageEvent, sequence: number) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<ChatUsageEvent>>("chat://usage", (event) => {
+      callback(event.payload.payload, event.payload.sequence);
+    });
   },
 
   async onEngineStateChanged(

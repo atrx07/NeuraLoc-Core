@@ -36,6 +36,24 @@ export function App() {
   }, [setTheme]);
 
   useEffect(() => {
+    let disposed = false;
+    let unlisten: () => void = () => {};
+    void bridge.onChatStateChanged((event) => {
+      setSnapshot((current) => current ? {
+        ...current,
+        activeJobs: event.state === "started" ? 1 : 0,
+      } : current);
+    }).then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
     const resolved = theme === "system"
       ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
       : theme;

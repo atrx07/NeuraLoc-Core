@@ -289,6 +289,8 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `start_engine` | model ID, optional context/threads | ready engine status |
 | `stop_engine` | engine session ID | final engine status |
 | `get_engine_logs` | engine session ID | bounded redacted log snapshot |
+| `start_chat_generation` | job/conversation/message/session IDs, bounded messages, output limit | completed/cancelled result and usage while token events stream |
+| `cancel_chat_generation` | job ID | cancellation accepted |
 | `submit_job` | typed job request | job ID |
 | `cancel_job` | job ID | accepted/current state |
 | `list_prompts` | search/filter | prompt summaries |
@@ -309,6 +311,7 @@ Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes. Model sca
 - `model://scan-progress`
 - `chat://token`
 - `chat://usage`
+- `chat://state-changed`
 - `download://progress`
 - `download://state-changed`
 - `telemetry://sample`
@@ -336,4 +339,4 @@ Adapters reserve a loopback port by binding port `0`, retaining the listener unt
 
 ## Testing architecture
 
-Unit tests cover pure policy and parsing. Integration tests launch copied deterministic executables for bounded logs, probes, natural exit, crash, and forced stop. An ignored network test downloads the official pinned package and verifies its real build output and file lifecycle. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database. A small redistributable tensor-bearing GGUF is still needed for automated model-load and health integration.
+Unit tests cover pure policy and parsing. Integration tests launch copied deterministic executables for bounded logs, probes, natural exit, crash, and forced stop. One ignored network test downloads the official pinned package and verifies its real build output and file lifecycle. A second ignored environment-selected test loads a real tensor-bearing GGUF, checks health, streams generation and usage, cancels a second active request, stops the server, and asserts that no owned child remains; it passed locally with Qwen3 4B Q4_K_M on 2026-07-14. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database. A small redistributable tensor-bearing GGUF is still needed before real-model coverage can run in normal CI.

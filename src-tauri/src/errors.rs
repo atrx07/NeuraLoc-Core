@@ -23,6 +23,8 @@ pub enum AppError {
     EnginePackage(String),
     #[error("The inference engine operation failed: {0}")]
     Engine(String),
+    #[error("The operation was cancelled: {0}")]
+    Cancelled(String),
     #[error("The operation could not be completed: {0}")]
     Operation(String),
 }
@@ -77,6 +79,7 @@ impl From<AppError> for IpcError {
                 "engine_error",
                 "Check the model, runtime status, and retained engine logs, then retry.",
             ),
+            AppError::Cancelled(_) => ("cancelled", "Start another operation when you are ready."),
             AppError::Operation(_) => (
                 "operation_error",
                 "Retry the operation. Open Logs if the problem continues.",

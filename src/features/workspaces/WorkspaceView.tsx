@@ -1,5 +1,4 @@
 import {
-  ArrowUp,
   AudioLines,
   Boxes,
   Download,
@@ -9,32 +8,16 @@ import {
   Mic,
   Plus,
   Search,
-  SlidersHorizontal,
   Sparkles,
   Square,
 } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import type { NavigationId } from "../../types/domain";
+import { ChatWorkspace } from "../chat/ChatWorkspace";
 import { ModelManagerView } from "../models/ModelManagerView";
 
 function EmptyState({ icon: Icon, title, detail, action, onAction }: { icon: typeof Boxes; title: string; detail: string; action: string; onAction?: () => void }) {
   return <div className="empty-state"><span><Icon size={27} /></span><h2>{title}</h2><p>{detail}</p><button className="primary-button" onClick={onAction} type="button"><Plus size={16} />{action}</button></div>;
-}
-
-function ChatWorkspace() {
-  const setActiveView = useAppStore((state) => state.setActiveView);
-  return <div className="chat-layout">
-    <aside className="conversation-rail"><button className="new-chat-button" type="button"><Plus size={17} /> New conversation</button><div className="rail-search"><Search size={15} /><input aria-label="Search conversations" placeholder="Search conversations" /></div><div className="conversation-empty">No conversations yet</div></aside>
-    <div className="chat-workspace">
-      <div className="chat-controls">
-        <label>Model<select defaultValue="none"><option value="none">No model selected</option><option>Install another model...</option></select></label>
-        <label>System prompt<select defaultValue="default"><option value="default">Default assistant</option><option>Manage prompt library...</option></select></label>
-        <button className="icon-button" title="Generation settings" type="button"><SlidersHorizontal size={18} /></button>
-      </div>
-      <div className="chat-empty"><div className="brand-orbit"><Sparkles size={26} /></div><h2>Start a local conversation</h2><p>Select an installed GGUF model and a system prompt. Messages stay on this device.</p><button className="secondary-button" onClick={() => setActiveView("models")} type="button"><Download size={16} /> Find a model</button></div>
-      <div className="composer"><textarea aria-label="Message" disabled placeholder="Install or import a model to begin" /><div className="composer-actions"><button className="icon-button" disabled title="Attach image" type="button"><ImagePlus size={18} /></button><button className="send-button" disabled title="Send message" type="button"><ArrowUp size={18} /></button></div></div>
-    </div>
-  </div>;
 }
 
 function PromptWorkspace() {

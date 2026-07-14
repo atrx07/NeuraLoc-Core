@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     net::{Ipv4Addr, TcpListener},
     path::{Path, PathBuf},
     sync::Arc,
@@ -7,9 +7,12 @@ use std::{
 };
 
 use async_trait::async_trait;
-use reqwest::{redirect, Client, Response, StatusCode};
+use reqwest::{header::CONTENT_TYPE, redirect, Client, Response, StatusCode};
 use serde_json::Value;
-use tokio::{sync::Mutex, time::sleep};
+use tokio::{
+    sync::{watch, Mutex},
+    time::sleep,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -24,7 +27,11 @@ use super::traits::{
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(2);
+const GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
+const MAX_CHAT_REQUEST_BYTES: usize = 1024 * 1024;
+const MAX_STREAM_LINE_BYTES: usize = 1024 * 1024;
+const MAX_GENERATED_TEXT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_PORT_ATTEMPTS: usize = 3;
 
 #[derive(Clone)]
@@ -62,7 +69,9 @@ pub(crate) struct LlamaCppSnapshot {
 pub struct LlamaCppEngine {
     processes: Arc<ProcessManager>,
     client: Client,
+    generation_client: Client,
     state: Mutex<AdapterState>,
+    active_jobs: Mutex<HashMap<String, watch::Sender<bool>>>,
 }
 
 impl LlamaCppEngine {
@@ -78,10 +87,23 @@ impl LlamaCppEngine {
                     "the llama.cpp health client could not start: {error}"
                 ))
             })?;
+        let generation_client = Client::builder()
+            .no_proxy()
+            .connect_timeout(HTTP_TIMEOUT)
+            .timeout(GENERATION_TIMEOUT)
+            .redirect(redirect::Policy::none())
+            .build()
+            .map_err(|error| {
+                AppError::Engine(format!(
+                    "the llama.cpp generation client could not start: {error}"
+                ))
+            })?;
         Ok(Self {
             processes,
             client,
+            generation_client,
             state: Mutex::new(AdapterState::default()),
+            active_jobs: Mutex::new(HashMap::new()),
         })
     }
 
@@ -114,6 +136,10 @@ impl LlamaCppEngine {
             session.process_id.clone(),
             self.processes.logs(&session.process_id).await,
         ))
+    }
+
+    pub(crate) async fn active_job_count(&self) -> usize {
+        self.active_jobs.lock().await.len()
     }
 
     async fn wait_until_ready(&self, session: &ActiveSession) -> AppResult<()> {
@@ -219,6 +245,141 @@ impl LlamaCppEngine {
             "llama.cpp exited during startup with {:?}: {detail}",
             summary.exit_code
         ))
+    }
+
+    async fn run_generation(
+        &self,
+        session: &ActiveSession,
+        request: &ChatRequest,
+        sink: TokenSink,
+        mut cancelled: watch::Receiver<bool>,
+    ) -> AppResult<Usage> {
+        let messages: Value = serde_json::from_str(&request.messages_json).map_err(|error| {
+            AppError::Engine(format!("the chat message payload is invalid: {error}"))
+        })?;
+        if !messages.is_array() {
+            return Err(AppError::Engine(
+                "the chat message payload must be an array".into(),
+            ));
+        }
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "model": "local-model",
+            "messages": messages,
+            "max_tokens": request.max_output_tokens,
+            "stream": true,
+            "stream_options": { "include_usage": true }
+        }))
+        .map_err(|error| {
+            AppError::Engine(format!("the chat request could not be encoded: {error}"))
+        })?;
+        if payload.len() > MAX_CHAT_REQUEST_BYTES {
+            return Err(AppError::Engine(
+                "the chat request exceeds the 1 MiB transport limit".into(),
+            ));
+        }
+
+        let response = tokio::select! {
+            _ = cancelled.changed() => return Err(AppError::Cancelled("chat generation stopped".into())),
+            result = self.generation_client
+                .post(format!("{}/v1/chat/completions", session.endpoint))
+                .bearer_auth(&session.api_key)
+                .header(CONTENT_TYPE, "application/json")
+                .body(payload)
+                .send() => result.map_err(|error| AppError::Engine(format!("llama.cpp chat request failed: {error}")))?,
+        };
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = bounded_body(response).await?;
+            let detail = serde_json::from_slice::<Value>(&body)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .pointer("/error/message")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned)
+                })
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| String::from_utf8_lossy(&body).trim().to_owned());
+            return Err(AppError::Engine(if detail.is_empty() {
+                format!("llama.cpp chat returned HTTP {status}")
+            } else {
+                format!("llama.cpp chat returned HTTP {status}: {detail}")
+            }));
+        }
+
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if !content_type
+            .to_ascii_lowercase()
+            .starts_with("text/event-stream")
+        {
+            return Err(AppError::Engine(
+                "llama.cpp chat did not return an event stream".into(),
+            ));
+        }
+
+        let mut response = response;
+        let mut decoder = SseLineDecoder::default();
+        let mut sequence = 0_u64;
+        let mut generated_bytes = 0_usize;
+        let mut usage = Usage {
+            prompt_tokens: 0,
+            output_tokens: 0,
+            tokens_per_second: 0.0,
+        };
+        let mut done = false;
+        while !done {
+            let chunk = tokio::select! {
+                _ = cancelled.changed() => return Err(AppError::Cancelled("chat generation stopped".into())),
+                result = response.chunk() => result.map_err(|error| AppError::Engine(format!("llama.cpp chat stream failed: {error}")))?,
+            };
+            let Some(chunk) = chunk else { break };
+            for data in decoder.push(&chunk)? {
+                if data == "[DONE]" {
+                    done = true;
+                    break;
+                }
+                let event: Value = serde_json::from_str(&data).map_err(|error| {
+                    AppError::Engine(format!("llama.cpp returned invalid stream JSON: {error}"))
+                })?;
+                update_usage(&event, &mut usage);
+                if let Some(text) = stream_text(&event) {
+                    generated_bytes = generated_bytes.saturating_add(text.len());
+                    if generated_bytes > MAX_GENERATED_TEXT_BYTES {
+                        return Err(AppError::Engine(
+                            "llama.cpp generated more than the 4 MiB response limit".into(),
+                        ));
+                    }
+                    sequence = sequence.saturating_add(1);
+                    sink.send(super::traits::TokenChunk {
+                        job_id: request.job_id.clone(),
+                        sequence,
+                        text: text.to_owned(),
+                    })
+                    .await
+                    .map_err(|_| AppError::Cancelled("the chat receiver closed".into()))?;
+                }
+            }
+        }
+        for data in decoder.finish()? {
+            if data == "[DONE]" {
+                done = true;
+            } else {
+                let event: Value = serde_json::from_str(&data).map_err(|error| {
+                    AppError::Engine(format!("llama.cpp returned invalid stream JSON: {error}"))
+                })?;
+                update_usage(&event, &mut usage);
+            }
+        }
+        if !done {
+            return Err(AppError::Engine(
+                "llama.cpp ended the chat stream before its terminal event".into(),
+            ));
+        }
+        Ok(usage)
     }
 }
 
@@ -369,6 +530,9 @@ impl InferenceEngine for LlamaCppEngine {
     }
 
     async fn stop(&self) -> AppResult<()> {
+        for cancellation in self.active_jobs.lock().await.values() {
+            let _ = cancellation.send(true);
+        }
         let session = self
             .state
             .lock()
@@ -431,17 +595,155 @@ impl InferenceEngine for LlamaCppEngine {
 
 #[async_trait]
 impl ChatEngine for LlamaCppEngine {
-    async fn generate(&self, _request: ChatRequest, _sink: TokenSink) -> AppResult<Usage> {
-        Err(AppError::Engine(
-            "streaming chat generation is not connected yet".into(),
-        ))
+    async fn generate(&self, request: ChatRequest, sink: TokenSink) -> AppResult<Usage> {
+        if request.job_id.trim().is_empty() || request.job_id.len() > 128 {
+            return Err(AppError::Engine("the chat job ID is invalid".into()));
+        }
+        if !(1..=4_096).contains(&request.max_output_tokens) {
+            return Err(AppError::Engine(
+                "maximum output tokens must be between 1 and 4096".into(),
+            ));
+        }
+        let session = self
+            .state
+            .lock()
+            .await
+            .session
+            .clone()
+            .ok_or_else(|| AppError::Engine("there is no loaded llama.cpp model".into()))?;
+        let summary = self
+            .processes
+            .summary(&session.process_id)
+            .await
+            .ok_or_else(|| AppError::Engine("the llama.cpp process is unavailable".into()))?;
+        if summary.state != EngineLifecycle::Ready {
+            return Err(AppError::Engine(
+                "the llama.cpp model session is not ready".into(),
+            ));
+        }
+
+        let (cancellation, receiver) = watch::channel(false);
+        {
+            let mut jobs = self.active_jobs.lock().await;
+            if !jobs.is_empty() {
+                return Err(AppError::Engine(
+                    "another chat generation is already active".into(),
+                ));
+            }
+            jobs.insert(request.job_id.clone(), cancellation);
+        }
+        if let Err(error) = self
+            .processes
+            .set_state(&session.process_id, EngineLifecycle::Busy)
+            .await
+        {
+            self.active_jobs.lock().await.remove(&request.job_id);
+            return Err(error);
+        }
+        let result = self
+            .run_generation(&session, &request, sink, receiver)
+            .await;
+        self.active_jobs.lock().await.remove(&request.job_id);
+        if self
+            .processes
+            .summary(&session.process_id)
+            .await
+            .is_some_and(|summary| !summary.state.is_terminal())
+        {
+            self.processes
+                .set_state(&session.process_id, EngineLifecycle::Ready)
+                .await?;
+        }
+        result
     }
 
-    async fn cancel(&self, _job_id: &str) -> AppResult<()> {
-        Err(AppError::Engine(
-            "chat cancellation is not connected yet".into(),
-        ))
+    async fn cancel(&self, job_id: &str) -> AppResult<()> {
+        let cancellation = self
+            .active_jobs
+            .lock()
+            .await
+            .get(job_id)
+            .cloned()
+            .ok_or_else(|| AppError::Engine(format!("chat job {job_id} is not active")))?;
+        cancellation
+            .send(true)
+            .map_err(|_| AppError::Engine(format!("chat job {job_id} already finished")))
     }
+}
+
+#[derive(Default)]
+struct SseLineDecoder {
+    buffer: Vec<u8>,
+}
+
+impl SseLineDecoder {
+    fn push(&mut self, bytes: &[u8]) -> AppResult<Vec<String>> {
+        if self.buffer.len().saturating_add(bytes.len()) > MAX_STREAM_LINE_BYTES {
+            return Err(AppError::Engine(
+                "llama.cpp returned an oversized stream event".into(),
+            ));
+        }
+        self.buffer.extend_from_slice(bytes);
+        let mut data = Vec::new();
+        while let Some(position) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let mut line: Vec<u8> = self.buffer.drain(..=position).collect();
+            line.pop();
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
+            if let Some(value) = parse_sse_data_line(&line)? {
+                data.push(value);
+            }
+        }
+        Ok(data)
+    }
+
+    fn finish(&mut self) -> AppResult<Vec<String>> {
+        if self.buffer.is_empty() {
+            return Ok(Vec::new());
+        }
+        let line = std::mem::take(&mut self.buffer);
+        Ok(parse_sse_data_line(&line)?.into_iter().collect())
+    }
+}
+
+fn parse_sse_data_line(line: &[u8]) -> AppResult<Option<String>> {
+    let line = std::str::from_utf8(line)
+        .map_err(|_| AppError::Engine("llama.cpp returned a non-UTF-8 stream event".into()))?;
+    let Some(data) = line.strip_prefix("data:") else {
+        return Ok(None);
+    };
+    Ok(Some(data.strip_prefix(' ').unwrap_or(data).to_owned()))
+}
+
+fn stream_text(event: &Value) -> Option<&str> {
+    event
+        .pointer("/choices/0/delta/content")
+        .and_then(Value::as_str)
+        .or_else(|| event.pointer("/choices/0/text").and_then(Value::as_str))
+        .filter(|text| !text.is_empty())
+}
+
+fn update_usage(event: &Value, usage: &mut Usage) {
+    usage.prompt_tokens = event
+        .pointer("/usage/prompt_tokens")
+        .and_then(Value::as_u64)
+        .or_else(|| event.pointer("/timings/prompt_n").and_then(Value::as_u64))
+        .unwrap_or(usage.prompt_tokens);
+    usage.output_tokens = event
+        .pointer("/usage/completion_tokens")
+        .and_then(Value::as_u64)
+        .or_else(|| {
+            event
+                .pointer("/timings/predicted_n")
+                .and_then(Value::as_u64)
+        })
+        .unwrap_or(usage.output_tokens);
+    usage.tokens_per_second = event
+        .pointer("/timings/predicted_per_second")
+        .and_then(Value::as_f64)
+        .map(|value| value as f32)
+        .unwrap_or(usage.tokens_per_second);
 }
 
 fn build_server_args(
@@ -526,7 +828,7 @@ async fn bounded_body(mut response: Response) -> AppResult<Vec<u8>> {
         .is_some_and(|length| length > MAX_HTTP_BODY_BYTES as u64)
     {
         return Err(AppError::Engine(
-            "llama.cpp returned an oversized identity response".into(),
+            "llama.cpp returned an oversized backend response".into(),
         ));
     }
     let mut body = Vec::new();
@@ -537,7 +839,7 @@ async fn bounded_body(mut response: Response) -> AppResult<Vec<u8>> {
     {
         if body.len().saturating_add(chunk.len()) > MAX_HTTP_BODY_BYTES {
             return Err(AppError::Engine(
-                "llama.cpp returned an oversized identity response".into(),
+                "llama.cpp returned an oversized backend response".into(),
             ));
         }
         body.extend_from_slice(&chunk);
@@ -669,5 +971,137 @@ mod tests {
         assert!(validate_props_identity(&props, &model, "b9986").is_ok());
         assert!(validate_props_identity(&props, &model, "b9985").is_err());
         let _ = std::fs::remove_file(model);
+    }
+
+    #[test]
+    fn decodes_split_sse_lines_and_usage() {
+        let mut decoder = SseLineDecoder::default();
+        assert!(decoder
+            .push(b"data: {\"choices\":[{\"del")
+            .unwrap()
+            .is_empty());
+        let lines = decoder
+            .push(b"ta\":{\"content\":\"Hello\"}}]}\r\ndata: [DONE]\n\n")
+            .unwrap();
+        assert_eq!(lines.len(), 2);
+        let event: Value = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!(stream_text(&event), Some("Hello"));
+        assert_eq!(lines[1], "[DONE]");
+
+        let mut usage = Usage {
+            prompt_tokens: 0,
+            output_tokens: 0,
+            tokens_per_second: 0.0,
+        };
+        update_usage(
+            &serde_json::json!({
+                "usage": { "prompt_tokens": 12, "completion_tokens": 4 },
+                "timings": { "predicted_per_second": 23.5 }
+            }),
+            &mut usage,
+        );
+        assert_eq!(usage.prompt_tokens, 12);
+        assert_eq!(usage.output_tokens, 4);
+        assert_eq!(usage.tokens_per_second, 23.5);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires NEURALOC_TEST_LLAMA_SERVER and NEURALOC_TEST_GGUF"]
+    async fn loads_streams_and_stops_a_real_local_model() {
+        let executable = PathBuf::from(
+            std::env::var("NEURALOC_TEST_LLAMA_SERVER")
+                .expect("NEURALOC_TEST_LLAMA_SERVER must point to llama-server.exe"),
+        );
+        let model = PathBuf::from(
+            std::env::var("NEURALOC_TEST_GGUF")
+                .expect("NEURALOC_TEST_GGUF must point to a tensor-bearing GGUF"),
+        );
+        let processes = Arc::new(ProcessManager::default());
+        let engine = Arc::new(LlamaCppEngine::new(Arc::clone(&processes)).unwrap());
+        engine
+            .prepare(EngineConfig {
+                executable,
+                expected_version: "b9986".into(),
+                environment: BTreeMap::new(),
+            })
+            .await
+            .unwrap();
+        let handle = engine
+            .start(EngineStartRequest {
+                model_path: model,
+                device_id: "cpu".into(),
+                options: BTreeMap::from([("context_size".into(), "1024".into())]),
+            })
+            .await
+            .unwrap();
+        assert!(engine.health().await.unwrap().ready);
+
+        let (sink, mut tokens) = tokio::sync::mpsc::channel(32);
+        let generation_engine = Arc::clone(&engine);
+        let generation = tokio::spawn(async move {
+            generation_engine
+                .generate(
+                    ChatRequest {
+                        job_id: "real-model-smoke".into(),
+                        messages_json: serde_json::json!([{
+                            "role": "user",
+                            "content": "Reply with the single word OK."
+                        }])
+                        .to_string(),
+                        max_output_tokens: 256,
+                    },
+                    sink,
+                )
+                .await
+        });
+        let mut output = String::new();
+        while let Some(chunk) = tokens.recv().await {
+            output.push_str(&chunk.text);
+        }
+        let usage = generation.await.unwrap().unwrap();
+        assert!(!output.trim().is_empty());
+        assert!(usage.output_tokens > 0);
+
+        let (sink, _tokens) = tokio::sync::mpsc::channel(32);
+        let generation_engine = Arc::clone(&engine);
+        let cancellation = tokio::spawn(async move {
+            generation_engine
+                .generate(
+                    ChatRequest {
+                        job_id: "real-model-cancel".into(),
+                        messages_json: serde_json::json!([{
+                            "role": "user",
+                            "content": "Write a long numbered list of one thousand items."
+                        }])
+                        .to_string(),
+                        max_output_tokens: 4_096,
+                    },
+                    sink,
+                )
+                .await
+        });
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if processes
+                .summary(&handle.process_id)
+                .await
+                .is_some_and(|summary| summary.state == EngineLifecycle::Busy)
+            {
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "generation did not enter busy state"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+        engine.cancel("real-model-cancel").await.unwrap();
+        assert!(matches!(
+            cancellation.await.unwrap(),
+            Err(AppError::Cancelled(_))
+        ));
+
+        engine.stop().await.unwrap();
+        assert_eq!(processes.active_count().await, 0);
     }
 }
