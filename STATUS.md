@@ -49,7 +49,7 @@ This checkpoint is usable for ephemeral local chat, but it is not yet a complete
 - The adapter reserves loopback port `0`, binds only `127.0.0.1`, passes a random API key through the cleared child environment, polls `/health`, and requires authenticated `/props` to report the expected canonical model path and `b9986` build before declaring ready.
 - Runtime commands expose status, explicit health, start, stop, and bounded retained logs. Package uninstall is rejected while startup or a live session owns the runtime.
 - Model-load cancellation can stop the owned process while readiness polling is in flight. Stop uses a short adapter grace interval before the process manager force-stops only its tracked child.
-- `ChatEngine` posts bounded OpenAI-compatible message payloads to the Rust-internal authenticated `/v1/chat/completions` endpoint, parses bounded UTF-8 SSE data lines, batches token events every 16 ms or 256 bytes, records usage, rejects truncated streams, and supports one active cancellable generation.
+- `ChatEngine` posts bounded OpenAI-compatible message payloads to the Rust-internal authenticated `/v1/chat/completions` endpoint, disables model thinking through bounded chat-template kwargs so Qwen3 returns visible answer text, parses bounded UTF-8 SSE data lines, batches token events every 16 ms or 256 bytes, records usage, rejects truncated or visible-text-empty streams, and supports one active cancellable generation.
 - Typed `start_chat_generation` and `cancel_chat_generation` commands validate job/session/message identity, role/content/count/output limits, require the matching ready model session, and emit sequenced token, usage, and terminal-state events.
 - Central model path validation requires absolute canonical regular files/folders, rejects device/traversal/symlink/reparse paths, limits imports to `.gguf`, and never deletes a model file.
 - Cheap verification checks GGUF magic/version, bounded counts and metadata sizes, modification time, path identity, and hard-link duplicates without loading tensors or complete model files into memory.
@@ -296,9 +296,9 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 3 Vitest files, 7 tests for adaptive byte formatting, missing telemetry, model metadata, selector grouping/labels, and selected-session readiness.
-- Rust: 29 passing default tests plus two ignored opt-in integration tests. Coverage includes bounded chat request validation, split SSE decoding, usage extraction, owned build probes, pinned-version parsing, fixed/bounded llama.cpp arguments, and `/props` model/build identity validation alongside the hardware, database, GGUF, model, process, and package suites.
+- Rust: 30 passing default tests plus two ignored opt-in integration tests. Coverage includes bounded chat request validation, non-thinking chat payloads, split SSE decoding, usage extraction, owned build probes, pinned-version parsing, fixed/bounded llama.cpp arguments, and `/props` model/build identity validation alongside the hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
-- Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, streamed, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
+- Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
 
 The Tauri debug build also runs the production frontend build as its configured pre-build command.
 
@@ -310,7 +310,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 29,455,360 bytes, rebuilt on 2026-07-14 after the Chat streaming checkpoint. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 29,455,872 bytes, rebuilt on 2026-07-14 after the visible-response and navigation-lifecycle fixes. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 

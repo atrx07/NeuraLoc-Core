@@ -254,29 +254,7 @@ impl LlamaCppEngine {
         sink: TokenSink,
         mut cancelled: watch::Receiver<bool>,
     ) -> AppResult<Usage> {
-        let messages: Value = serde_json::from_str(&request.messages_json).map_err(|error| {
-            AppError::Engine(format!("the chat message payload is invalid: {error}"))
-        })?;
-        if !messages.is_array() {
-            return Err(AppError::Engine(
-                "the chat message payload must be an array".into(),
-            ));
-        }
-        let payload = serde_json::to_vec(&serde_json::json!({
-            "model": "local-model",
-            "messages": messages,
-            "max_tokens": request.max_output_tokens,
-            "stream": true,
-            "stream_options": { "include_usage": true }
-        }))
-        .map_err(|error| {
-            AppError::Engine(format!("the chat request could not be encoded: {error}"))
-        })?;
-        if payload.len() > MAX_CHAT_REQUEST_BYTES {
-            return Err(AppError::Engine(
-                "the chat request exceeds the 1 MiB transport limit".into(),
-            ));
-        }
+        let payload = build_chat_payload(request)?;
 
         let response = tokio::select! {
             _ = cancelled.changed() => return Err(AppError::Cancelled("chat generation stopped".into())),
@@ -377,6 +355,11 @@ impl LlamaCppEngine {
         if !done {
             return Err(AppError::Engine(
                 "llama.cpp ended the chat stream before its terminal event".into(),
+            ));
+        }
+        if generated_bytes == 0 {
+            return Err(AppError::Engine(
+                "the model completed without visible response text".into(),
             ));
         }
         Ok(usage)
@@ -724,6 +707,32 @@ fn stream_text(event: &Value) -> Option<&str> {
         .filter(|text| !text.is_empty())
 }
 
+fn build_chat_payload(request: &ChatRequest) -> AppResult<Vec<u8>> {
+    let messages: Value = serde_json::from_str(&request.messages_json).map_err(|error| {
+        AppError::Engine(format!("the chat message payload is invalid: {error}"))
+    })?;
+    if !messages.is_array() {
+        return Err(AppError::Engine(
+            "the chat message payload must be an array".into(),
+        ));
+    }
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "model": "local-model",
+        "messages": messages,
+        "max_tokens": request.max_output_tokens,
+        "stream": true,
+        "stream_options": { "include_usage": true },
+        "chat_template_kwargs": { "enable_thinking": false }
+    }))
+    .map_err(|error| AppError::Engine(format!("the chat request could not be encoded: {error}")))?;
+    if payload.len() > MAX_CHAT_REQUEST_BYTES {
+        return Err(AppError::Engine(
+            "the chat request exceeds the 1 MiB transport limit".into(),
+        ));
+    }
+    Ok(payload)
+}
+
 fn update_usage(event: &Value, usage: &mut Usage) {
     usage.prompt_tokens = event
         .pointer("/usage/prompt_tokens")
@@ -1005,6 +1014,29 @@ mod tests {
         assert_eq!(usage.tokens_per_second, 23.5);
     }
 
+    #[test]
+    fn disables_thinking_in_chat_payloads() {
+        let payload = build_chat_payload(&ChatRequest {
+            job_id: "payload-test".into(),
+            messages_json: serde_json::json!([{
+                "role": "user",
+                "content": "Hello"
+            }])
+            .to_string(),
+            max_output_tokens: 512,
+        })
+        .unwrap();
+        let payload: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            payload.pointer("/chat_template_kwargs/enable_thinking"),
+            Some(&Value::Bool(false))
+        );
+        assert_eq!(
+            payload.pointer("/max_tokens").and_then(Value::as_u64),
+            Some(512)
+        );
+    }
+
     #[tokio::test]
     #[ignore = "requires NEURALOC_TEST_LLAMA_SERVER and NEURALOC_TEST_GGUF"]
     async fn loads_streams_and_stops_a_real_local_model() {
@@ -1045,7 +1077,7 @@ mod tests {
                         job_id: "real-model-smoke".into(),
                         messages_json: serde_json::json!([{
                             "role": "user",
-                            "content": "Reply with the single word OK."
+                            "content": "Reply with the exact text NEURALOC_OK and nothing else."
                         }])
                         .to_string(),
                         max_output_tokens: 256,
@@ -1059,7 +1091,10 @@ mod tests {
             output.push_str(&chunk.text);
         }
         let usage = generation.await.unwrap().unwrap();
-        assert!(!output.trim().is_empty());
+        assert!(
+            output.contains("NEURALOC_OK"),
+            "unexpected output: {output}"
+        );
         assert!(usage.output_tokens > 0);
 
         let (sink, _tokens) = tokio::sync::mpsc::channel(32);

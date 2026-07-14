@@ -373,11 +373,13 @@ export function ChatWorkspace() {
             <header><strong>{message.role === "user" ? "You" : selectedModel?.displayName ?? "Assistant"}</strong>{message.usage && <small>{usageLabel(message.usage)}</small>}</header>
             {message.content
               ? <div className="message-content">{message.content}</div>
-              : message.state === "cancelled"
-                ? <div className="message-terminal">Generation stopped</div>
-                : message.state === "error"
-                  ? <div className="message-terminal error">Generation failed</div>
-                  : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
+              : message.state === "complete"
+                ? <div className="message-terminal error">No response text was returned</div>
+                : message.state === "cancelled"
+                  ? <div className="message-terminal">Generation stopped</div>
+                  : message.state === "error"
+                    ? <div className="message-terminal error">Generation failed</div>
+                    : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
           </div>
         </article>)}
       </div>}
