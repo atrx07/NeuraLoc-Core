@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Activity, HardDrive, ShieldCheck } from "lucide-react";
 import { Sidebar } from "../components/Sidebar";
+import { ChatWorkspace } from "../features/chat/ChatWorkspace";
 import { HardwareView } from "../features/hardware/HardwareView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { WorkspaceView } from "../features/workspaces/WorkspaceView";
@@ -76,7 +77,8 @@ export function App() {
           </div>
         </header>
         <section className={`view-container ${activeView === "chat" ? "chat-view" : ""}`}>
-          {activeView === "hardware" ? <HardwareView /> : activeView === "settings" ? <SettingsView /> : <WorkspaceView view={activeView} />}
+          <div className="chat-view-host" hidden={activeView !== "chat"}><ChatWorkspace /></div>
+          {activeView !== "chat" && (activeView === "hardware" ? <HardwareView /> : activeView === "settings" ? <SettingsView /> : <WorkspaceView view={activeView} />)}
         </section>
       </main>
     </div>

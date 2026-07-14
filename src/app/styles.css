@@ -81,6 +81,7 @@ p { color: var(--muted); line-height: 1.55; }
 .topbar-status .private { color: var(--accent-strong); border-color: rgba(56, 182, 165, 0.25); }
 .view-container { min-height: 0; overflow: auto; background: var(--bg); }
 .view-container.chat-view { overflow: hidden; }
+.chat-view-host { min-height: 0; height: 100%; }
 
 .icon-button { width: 34px; height: 34px; flex: 0 0 34px; display: inline-grid; place-items: center; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); cursor: pointer; }
 .icon-button:hover:not(:disabled) { background: var(--surface-hover); }

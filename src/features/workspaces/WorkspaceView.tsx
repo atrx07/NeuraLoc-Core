@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../stores/app-store";
 import type { NavigationId } from "../../types/domain";
-import { ChatWorkspace } from "../chat/ChatWorkspace";
 import { ModelManagerView } from "../models/ModelManagerView";
 
 function EmptyState({ icon: Icon, title, detail, action, onAction }: { icon: typeof Boxes; title: string; detail: string; action: string; onAction?: () => void }) {
@@ -35,7 +34,7 @@ const emptyByView: Partial<Record<NavigationId, { icon: typeof Boxes; title: str
 
 export function WorkspaceView({ view }: { view: NavigationId }) {
   const setActiveView = useAppStore((state) => state.setActiveView);
-  if (view === "chat") return <ChatWorkspace />;
+  if (view === "chat") return null;
   if (view === "models") return <ModelManagerView />;
   if (view === "prompts") return <PromptWorkspace />;
   const state = emptyByView[view];
