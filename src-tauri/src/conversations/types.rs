@@ -16,6 +16,8 @@ pub struct ConversationSummary {
     pub context_strategy: String,
     pub pinned: bool,
     pub message_count: u32,
+    pub source_conversation_id: Option<String>,
+    pub branch_message_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -33,6 +35,8 @@ pub struct ConversationRecord {
     pub generation_settings: Value,
     pub context_strategy: String,
     pub pinned: bool,
+    pub source_conversation_id: Option<String>,
+    pub branch_message_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -100,6 +104,7 @@ pub struct ConversationMessage {
     pub id: String,
     pub conversation_id: String,
     pub parent_id: Option<String>,
+    pub source_message_id: Option<String>,
     pub role: ConversationMessageRole,
     pub content: String,
     pub state: ConversationMessageState,
@@ -153,6 +158,14 @@ pub struct RenameConversationRequest {
 pub struct SetConversationPinnedRequest {
     pub conversation_id: String,
     pub pinned: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BranchConversationRequest {
+    pub source_conversation_id: String,
+    pub new_conversation_id: String,
+    pub through_message_id: Option<String>,
 }
 
 #[derive(Debug)]

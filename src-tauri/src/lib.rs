@@ -43,6 +43,7 @@ pub fn run() {
             commands::conversation_commands::set_conversation_pinned,
             commands::conversation_commands::delete_conversation,
             commands::conversation_commands::export_conversation,
+            commands::conversation_commands::branch_conversation,
             commands::engine_package_commands::list_engine_packages,
             commands::engine_package_commands::install_engine_package,
             commands::engine_package_commands::import_engine_package,

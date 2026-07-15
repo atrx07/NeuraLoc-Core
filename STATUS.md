@@ -10,7 +10,7 @@ Current version: `0.1.0`
 
 NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, bounded chat generation, and immutable system prompts, and renders a polished desktop shell with functional Chat, Prompt Library, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
 
-This checkpoint has durable linear local chat with an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. The searchable Chat rail lazily opens messages, restores the last conversation and exact bindings after restart, and supports rename, pin, bounded provenance-preserving Markdown export, and cascade delete. A local opt-in Qwen3 4B integration passed on 2026-07-14. Branch/retry, multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
+This checkpoint has durable linear local chat with an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. The searchable Chat rail lazily opens messages, restores the last conversation and exact bindings after restart, and supports rename, pin, bounded provenance-preserving Markdown export, and cascade delete. The backend can transactionally clone an independent conversation branch with remapped parent links and source provenance; Chat controls and retry generation are not connected yet. A local opt-in Qwen3 4B integration passed on 2026-07-14. Multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -40,6 +40,7 @@ This checkpoint has durable linear local chat with an optional immutable system-
 - Additive migration 3 adds engine-package identity, route, install path, archive checksum, installed-file inventory, state, source, errors, and install/verification timestamps.
 - Additive migration 4 adds prompt profile timestamps, exact raw source documents, duplicate provenance, and prompt-library indexes without modifying the foundation migration.
 - Additive migration 5 adds assistant draft state, job/usage/terminal metadata, deterministic message positions, recovery timestamps, and conversation/message indexes.
+- Additive migration 6 adds nullable source-conversation, branch-point, and source-message provenance plus lookup indexes. Branches retain copied content when their source is deleted.
 - Thread-safe `AppState` containing `Database`, `ConversationService`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, `PromptService`, and `SettingsService` handles.
 - Stable application and IPC error types with machine-readable error codes and user-facing suggestions.
 - Model repository/service and typed commands for list, import, recursive scan, cancellation, reverify, and record removal.
@@ -157,7 +158,8 @@ NeuraLoc-Core/
     |   |-- 0002_model_library.sql
     |   |-- 0003_engine_packages.sql
     |   |-- 0004_prompt_library.sql
-    |   `-- 0005_conversation_persistence.sql
+    |   |-- 0005_conversation_persistence.sql
+    |   `-- 0006_conversation_branches.sql
     |-- icons/                 # generated desktop/mobile icon bundle
     |-- gen/schemas/           # generated Tauri capability schemas
     `-- src/
@@ -250,8 +252,9 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 - `src-tauri/migrations/0003_engine_packages.sql` is migration version 3, name `engine_packages`; prior migration files remain unchanged.
 - `src-tauri/migrations/0004_prompt_library.sql` is migration version 4, name `prompt_library`; it adds profile timestamps, exact raw documents, duplicate provenance, and library indexes.
 - `src-tauri/migrations/0005_conversation_persistence.sql` is migration version 5, name `conversation_persistence`; it adds draft/job/usage/terminal fields, deterministic positions, recovery timestamps, and persistence indexes.
+- `src-tauri/migrations/0006_conversation_branches.sql` is migration version 6, name `conversation_branches`; it adds nullable branch/source provenance and indexes without modifying prior migrations.
 - The runner creates `schema_migrations` defensively, checks each version, executes unapplied SQL in a transaction, then records the version and UTC timestamp.
-- Tests run all migrations twice and upgrade a simulated version-1 database, confirming five ledger rows plus the model, package, prompt, and conversation-message additions.
+- Tests run all migrations twice and upgrade a simulated version-1 database, confirming six ledger rows plus the model, package, prompt, persistence, and branch-provenance additions.
 
 ### Foundation schema
 
@@ -263,8 +266,8 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 | `prompt_versions` | Immutable prompt content, hash, source, raw document, front matter, version, provenance | Active through `PromptRepository`/`PromptService` |
 | `models` | Local model identity, type, path, size, verification, GGUF metadata, file identity | Active through `ModelRepository`/`ModelService` |
 | `engine_packages` | Installed engine version/route/path, archive checksum, file inventory, state, errors, timestamps | Active through `EnginePackageRepository`/`EnginePackageService` |
-| `conversations` | Chat identity and selected model/prompt/settings | Active through `ConversationRepository`/`ConversationService` |
-| `messages` | Ordered parent-linked messages, drafts, usage, and terminal state | Active through `ConversationRepository`/`ConversationService` |
+| `conversations` | Chat identity, selected model/prompt/settings, and branch provenance | Active through `ConversationRepository`/`ConversationService` |
+| `messages` | Ordered parent-linked messages, drafts, usage, terminal state, and copied-source provenance | Active through `ConversationRepository`/`ConversationService` |
 | `downloads` | Resumable download state, byte counts, ETag, checksum, errors | Schema only |
 | `benchmarks` | Hardware/engine/model benchmark results | Schema only |
 | `outputs` | Generated file metadata and thumbnails | Schema only |
@@ -297,6 +300,7 @@ Indexes exist for prompt library ordering/version history, pinned/updated conver
 | `set_conversation_pinned` | conversation ID and pin state | none | Updates durable pinned ordering without loading messages |
 | `delete_conversation` | conversation ID | none | Deletes the conversation and cascades only its messages |
 | `export_conversation` | conversation ID | `ConversationExport` | Returns a bounded Markdown transcript generated from durable messages with structured binding/settings provenance |
+| `branch_conversation` | source/new conversation IDs and optional branch message ID | `ConversationDetail` | Transactionally clones the selected prefix with fresh IDs, remapped parents, copied bindings/settings, and source provenance |
 | `get_hardware_snapshot` | none | `HardwareSnapshot` | Returns cached hardware data or performs the first native probe |
 | `refresh_hardware` | none | `HardwareSnapshot` | Forces `sysinfo`, NVIDIA, and Windows NPU probes and replaces the cache |
 | `get_settings` | none | `AppSettings` | Returns the in-memory settings loaded from SQLite/defaults |
@@ -343,7 +347,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 6 Vitest files, 17 tests for adaptive byte formatting, model metadata, selector grouping/readiness, exact/approximate context metrics, immutable prompt/conversation restoration, persisted state mapping/order, inference-history filtering, and system-message ordering.
-- Rust: 44 passing default tests plus two ignored opt-in integration tests. Conversation coverage includes transactional turn ordering, terminal usage/content finalization, restart interruption recovery, binding-conflict rollback, deterministic search/list metadata, pin/rename, bounded provenance export, title/filename hardening, foreign keys, and cascade deletion, alongside the prompt, chat, hardware, database, GGUF, model, process, and package suites.
+- Rust: 47 passing default tests plus two ignored opt-in integration tests. Conversation coverage includes transactional turn ordering, terminal usage/content finalization, restart interruption recovery, binding-conflict rollback, deterministic search/list metadata, pin/rename, bounded provenance export, title/filename hardening, transactional branch copying, parent remapping, empty-prefix retry branches, source-deletion survival, foreign branch-point rollback, foreign keys, and cascade deletion, alongside the prompt, chat, hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
 
@@ -357,7 +361,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 30,777,344 bytes, rebuilt on 2026-07-15 after the bounded conversation-export update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 30,824,448 bytes, rebuilt on 2026-07-15 after the durable conversation-branch update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
@@ -387,7 +391,7 @@ Checkpoint size: 30,777,344 bytes, rebuilt on 2026-07-15 after the bounded conve
 - Advanced model selector compatibility/fit estimates, disabled-state explanations, load estimates, and Rust-persisted preference. Basic library-backed selection and runtime control are implemented.
 - Multi-layer prompt composition for tool policy, project instructions, memory, and the compiled-layer inspector. Markdown/text system-prompt import, versioning, editing, search, selector binding, and durable restoration are implemented.
 - Retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and engine crash recovery. Durable linear storage/history/restoration, startup interruption recovery, streaming, stop, and live context visibility are implemented.
-- Conversation branches, retry commands, incremental draft checkpoints during very long generations, and pagination beyond the first 50 history summaries. Repository-backed search/list/open/rename/pin/export/delete and final partial-response persistence are implemented.
+- Chat branch/retry controls, retry generation, incremental draft checkpoints during very long generations, and pagination beyond the first 50 history summaries. The migration-backed branch command and repository-backed search/list/open/rename/pin/export/delete/final partial-response behavior are implemented.
 - Signed model catalog, catalog refresh, recommendations, resumable downloads, verification, pause/retry, and installation.
 - Image generation, speech recognition, text-to-speech, gallery, downloads, and logs are visual empty states only.
 - OpenVINO, Vulkan, stable-diffusion.cpp, whisper.cpp, and Kokoro runtime adapters.

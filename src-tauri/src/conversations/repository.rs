@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use rusqlite::{params, OptionalExtension, Row, Transaction};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     engines::traits::Usage,
@@ -17,13 +18,14 @@ use super::types::{
 const CONVERSATION_COLUMNS: &str = "
     c.id, c.title, c.model_id, m.display_name, c.prompt_version_id,
     p.stable_name, pv.version, c.generation_settings_json, c.context_strategy,
-    c.pinned, c.created_at, c.updated_at
+    c.pinned, c.created_at, c.updated_at, c.source_conversation_id,
+    c.branch_message_id
 ";
 
 const MESSAGE_COLUMNS: &str = "
     id, conversation_id, parent_id, role, content_json, token_count, state,
     job_id, usage_json, terminal_reason, COALESCE(position, rowid), created_at,
-    COALESCE(updated_at, created_at)
+    COALESCE(updated_at, created_at), source_message_id
 ";
 
 pub(crate) struct ConversationRepository {
@@ -69,7 +71,7 @@ impl ConversationRepository {
         let stored = statement
             .query_map(
                 params![query, pattern, i64::from(limit), i64::from(offset)],
-                |row| Ok((StoredConversation::from_row(row)?, row.get::<_, i64>(12)?)),
+                |row| Ok((StoredConversation::from_row(row)?, row.get::<_, i64>(14)?)),
             )?
             .collect::<Result<Vec<_>, _>>()?;
         stored
@@ -312,6 +314,133 @@ impl ConversationRepository {
         ensure_changed(changed, conversation_id)
     }
 
+    pub fn branch(
+        &self,
+        source_conversation_id: &str,
+        new_conversation_id: &str,
+        through_message_id: Option<&str>,
+        now: &str,
+    ) -> AppResult<()> {
+        let mut connection = self.database.connection();
+        let transaction = connection.transaction()?;
+        let source_exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = ?1)",
+            [source_conversation_id],
+            |row| row.get(0),
+        )?;
+        if !source_exists {
+            return Err(AppError::ConversationNotFound(
+                source_conversation_id.into(),
+            ));
+        }
+        let destination_exists: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = ?1)",
+            [new_conversation_id],
+            |row| row.get(0),
+        )?;
+        if destination_exists {
+            return Err(AppError::Conflict(
+                "the destination conversation already exists".into(),
+            ));
+        }
+        let cutoff = match through_message_id {
+            Some(message_id) => transaction
+                .query_row(
+                    "SELECT COALESCE(position, rowid) FROM messages
+                     WHERE id = ?1 AND conversation_id = ?2",
+                    params![message_id, source_conversation_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    AppError::InvalidConversation(
+                        "the selected branch message does not belong to the source conversation"
+                            .into(),
+                    )
+                })?,
+            None => 0,
+        };
+        let inserted = transaction.execute(
+            "INSERT INTO conversations(
+               id, title, model_id, prompt_version_id, generation_settings_json,
+               context_strategy, pinned, created_at, updated_at,
+               source_conversation_id, branch_message_id
+             )
+             SELECT ?2,
+                    CASE WHEN length(title) > 111 THEN substr(title, 1, 111) ELSE title END || ' (branch)',
+                    model_id, prompt_version_id, generation_settings_json,
+                    context_strategy, 0, ?4, ?4, ?1, ?3
+             FROM conversations WHERE id = ?1",
+            params![
+                source_conversation_id,
+                new_conversation_id,
+                through_message_id,
+                now
+            ],
+        )?;
+        if inserted != 1 {
+            return Err(AppError::Operation(
+                "the branch conversation could not be created".into(),
+            ));
+        }
+
+        let stored_messages = {
+            let mut statement = transaction.prepare(&format!(
+                "SELECT {MESSAGE_COLUMNS} FROM messages
+                 WHERE conversation_id = ?1 AND COALESCE(position, rowid) <= ?2
+                 ORDER BY COALESCE(position, rowid), created_at, id"
+            ))?;
+            let messages = statement
+                .query_map(
+                    params![source_conversation_id, cutoff],
+                    StoredMessage::from_row,
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            messages
+        };
+        let mut message_ids = HashMap::with_capacity(stored_messages.len());
+        for message in stored_messages {
+            let source_message_id = message.id.clone();
+            let new_message_id = Uuid::new_v4().to_string();
+            let new_parent_id = message
+                .parent_id
+                .as_ref()
+                .map(|parent_id| {
+                    message_ids.get(parent_id).cloned().ok_or_else(|| {
+                        AppError::Operation(
+                            "the source conversation has an invalid parent chain".into(),
+                        )
+                    })
+                })
+                .transpose()?;
+            transaction.execute(
+                "INSERT INTO messages(
+                   id, conversation_id, parent_id, role, content_json, token_count,
+                   pinned, created_at, state, job_id, usage_json, terminal_reason,
+                   position, updated_at, source_message_id
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    new_message_id,
+                    new_conversation_id,
+                    new_parent_id,
+                    message.role,
+                    message.content_json,
+                    message.token_count,
+                    message.created_at,
+                    message.state,
+                    message.usage_json,
+                    message.terminal_reason,
+                    message.position,
+                    message.updated_at,
+                    source_message_id,
+                ],
+            )?;
+            message_ids.insert(source_message_id, new_message_id);
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn message(&self, message_id: &str) -> AppResult<Option<ConversationMessage>> {
         let connection = self.database.connection();
         let stored = connection
@@ -409,6 +538,8 @@ struct StoredConversation {
     pinned: i64,
     created_at: String,
     updated_at: String,
+    source_conversation_id: Option<String>,
+    branch_message_id: Option<String>,
 }
 
 impl StoredConversation {
@@ -426,6 +557,8 @@ impl StoredConversation {
             pinned: row.get(9)?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            source_conversation_id: row.get(12)?,
+            branch_message_id: row.get(13)?,
         })
     }
 
@@ -442,6 +575,8 @@ impl StoredConversation {
             pinned: self.pinned != 0,
             message_count: u32::try_from(message_count)
                 .map_err(|_| AppError::Operation("conversation message count is invalid".into()))?,
+            source_conversation_id: self.source_conversation_id,
+            branch_message_id: self.branch_message_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         })
@@ -465,6 +600,8 @@ impl TryFrom<StoredConversation> for ConversationRecord {
             )?,
             context_strategy: value.context_strategy,
             pinned: value.pinned != 0,
+            source_conversation_id: value.source_conversation_id,
+            branch_message_id: value.branch_message_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
         })
@@ -485,6 +622,7 @@ struct StoredMessage {
     position: i64,
     created_at: String,
     updated_at: String,
+    source_message_id: Option<String>,
 }
 
 impl StoredMessage {
@@ -503,6 +641,7 @@ impl StoredMessage {
             position: row.get(10)?,
             created_at: row.get(11)?,
             updated_at: row.get(12)?,
+            source_message_id: row.get(13)?,
         })
     }
 }
@@ -531,6 +670,7 @@ impl TryFrom<StoredMessage> for ConversationMessage {
             id: value.id.clone(),
             conversation_id: value.conversation_id,
             parent_id: value.parent_id,
+            source_message_id: value.source_message_id,
             role: ConversationMessageRole::parse(&value.role).ok_or_else(|| {
                 AppError::Operation(format!("message {} has an unknown role", value.id))
             })?,

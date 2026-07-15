@@ -35,6 +35,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "conversation_persistence",
         sql: include_str!("../../migrations/0005_conversation_persistence.sql"),
     },
+    Migration {
+        version: 6,
+        name: "conversation_branches",
+        sql: include_str!("../../migrations/0006_conversation_branches.sql"),
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> AppResult<()> {
@@ -83,7 +88,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 6);
     }
 
     #[test]
@@ -142,5 +147,15 @@ mod tests {
         assert!(message_columns.contains(&"terminal_reason".to_string()));
         assert!(message_columns.contains(&"position".to_string()));
         assert!(message_columns.contains(&"updated_at".to_string()));
+        assert!(message_columns.contains(&"source_message_id".to_string()));
+        let conversation_columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(conversations)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(conversation_columns.contains(&"source_conversation_id".to_string()));
+        assert!(conversation_columns.contains(&"branch_message_id".to_string()));
     }
 }

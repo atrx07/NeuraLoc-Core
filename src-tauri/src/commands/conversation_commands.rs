@@ -3,8 +3,9 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     conversations::{
-        ConversationDetail, ConversationExport, ConversationIdRequest, ConversationSummary,
-        ListConversationsRequest, RenameConversationRequest, SetConversationPinnedRequest,
+        BranchConversationRequest, ConversationDetail, ConversationExport, ConversationIdRequest,
+        ConversationSummary, ListConversationsRequest, RenameConversationRequest,
+        SetConversationPinnedRequest,
     },
     errors::IpcError,
 };
@@ -64,4 +65,12 @@ pub fn export_conversation(
         .conversations
         .export(&request.conversation_id)
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn branch_conversation(
+    state: State<'_, AppState>,
+    request: BranchConversationRequest,
+) -> Result<ConversationDetail, IpcError> {
+    state.conversations.branch(request).map_err(Into::into)
 }

@@ -12,9 +12,10 @@ use crate::{
 use super::{
     repository::{ConversationRepository, FinalizeAssistantInput},
     types::{
-        BeginTurnInput, ConversationDetail, ConversationExport, ConversationMessage,
-        ConversationMessageRole, ConversationMessageState, ConversationRecord, ConversationSummary,
-        ListConversationsRequest, RenameConversationRequest, SetConversationPinnedRequest,
+        BeginTurnInput, BranchConversationRequest, ConversationDetail, ConversationExport,
+        ConversationMessage, ConversationMessageRole, ConversationMessageState, ConversationRecord,
+        ConversationSummary, ListConversationsRequest, RenameConversationRequest,
+        SetConversationPinnedRequest,
     },
 };
 
@@ -103,6 +104,26 @@ impl ConversationService {
             media_type: "text/markdown;charset=utf-8".into(),
             content: conversation_markdown(&detail)?,
         })
+    }
+
+    pub fn branch(&self, request: BranchConversationRequest) -> AppResult<ConversationDetail> {
+        validate_id(&request.source_conversation_id, "source conversation")?;
+        validate_id(&request.new_conversation_id, "new conversation")?;
+        if request.source_conversation_id == request.new_conversation_id {
+            return Err(AppError::InvalidConversation(
+                "a conversation cannot branch into itself".into(),
+            ));
+        }
+        if let Some(message_id) = request.through_message_id.as_deref() {
+            validate_id(message_id, "branch message")?;
+        }
+        self.repository.branch(
+            &request.source_conversation_id,
+            &request.new_conversation_id,
+            request.through_message_id.as_deref(),
+            &Utc::now().to_rfc3339(),
+        )?;
+        self.get(&request.new_conversation_id)
     }
 
     pub(crate) fn begin_turn(&self, input: BeginTurnInput<'_>) -> AppResult<()> {
@@ -247,6 +268,12 @@ fn conversation_markdown(detail: &ConversationDetail) -> AppResult<String> {
         )?;
         if let Some(parent_id) = &message.parent_id {
             append_export(&mut output, &format!(" | Parent: `{parent_id}`"))?;
+        }
+        if let Some(source_message_id) = &message.source_message_id {
+            append_export(
+                &mut output,
+                &format!(" | Source message: `{source_message_id}`"),
+            )?;
         }
         if let Some(usage) = &message.usage {
             append_export(
@@ -506,5 +533,116 @@ mod tests {
     fn rejects_multiline_conversation_titles() {
         assert!(validate_title("first\nsecond").is_err());
         assert_eq!(safe_file_stem("../../"), "conversation");
+    }
+
+    #[test]
+    fn branches_a_message_prefix_with_remapped_parents_and_provenance() {
+        let (service, _database, directory) = service();
+        begin(&service, "conversation-source", "job-source");
+        service
+            .finalize_assistant(
+                "job-source-assistant",
+                "job-source",
+                "Durable response.",
+                ConversationMessageState::Complete,
+                None,
+                Some("completed"),
+            )
+            .unwrap();
+        let source = service.get("conversation-source").unwrap();
+        let branch_point = source.messages[1].id.clone();
+
+        let branch = service
+            .branch(BranchConversationRequest {
+                source_conversation_id: "conversation-source".into(),
+                new_conversation_id: "conversation-branch".into(),
+                through_message_id: Some(branch_point.clone()),
+            })
+            .unwrap();
+        assert_eq!(
+            branch.conversation.source_conversation_id.as_deref(),
+            Some("conversation-source")
+        );
+        assert_eq!(
+            branch.conversation.branch_message_id.as_deref(),
+            Some(branch_point.as_str())
+        );
+        assert_eq!(branch.conversation.model_id, source.conversation.model_id);
+        assert_eq!(
+            branch.conversation.generation_settings,
+            source.conversation.generation_settings
+        );
+        assert_eq!(branch.messages.len(), 2);
+        assert_ne!(branch.messages[0].id, source.messages[0].id);
+        assert_eq!(
+            branch.messages[0].source_message_id.as_deref(),
+            Some(source.messages[0].id.as_str())
+        );
+        assert_eq!(
+            branch.messages[1].parent_id.as_deref(),
+            Some(branch.messages[0].id.as_str())
+        );
+        assert_eq!(
+            branch.messages[1].source_message_id.as_deref(),
+            Some(source.messages[1].id.as_str())
+        );
+        assert!(branch
+            .messages
+            .iter()
+            .all(|message| message.job_id.is_none()));
+
+        service.delete("conversation-source").unwrap();
+        let surviving = service.get("conversation-branch").unwrap();
+        assert!(surviving.conversation.source_conversation_id.is_none());
+        assert!(surviving.conversation.branch_message_id.is_none());
+        assert!(surviving
+            .messages
+            .iter()
+            .all(|message| message.source_message_id.is_none()));
+        drop(service);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn creates_an_empty_branch_for_first_turn_retry() {
+        let (service, _database, directory) = service();
+        begin(&service, "conversation-retry-source", "job-retry-source");
+        let branch = service
+            .branch(BranchConversationRequest {
+                source_conversation_id: "conversation-retry-source".into(),
+                new_conversation_id: "conversation-retry-branch".into(),
+                through_message_id: None,
+            })
+            .unwrap();
+        assert!(branch.messages.is_empty());
+        begin(&service, "conversation-retry-branch", "job-retry-branch");
+        assert_eq!(
+            service
+                .get("conversation-retry-branch")
+                .unwrap()
+                .messages
+                .len(),
+            2
+        );
+        drop(service);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn rejects_foreign_branch_points_without_creating_a_destination() {
+        let (service, _database, directory) = service();
+        begin(&service, "conversation-valid-source", "job-valid-source");
+        let result = service.branch(BranchConversationRequest {
+            source_conversation_id: "conversation-valid-source".into(),
+            new_conversation_id: "conversation-invalid-branch".into(),
+            through_message_id: Some("message-from-another-conversation".into()),
+        });
+        assert!(matches!(result, Err(AppError::InvalidConversation(_))));
+        assert!(matches!(
+            service.get("conversation-invalid-branch"),
+            Err(AppError::ConversationNotFound(_))
+        ));
+        drop(service);
+        let _ = std::fs::remove_dir_all(directory);
     }
 }
