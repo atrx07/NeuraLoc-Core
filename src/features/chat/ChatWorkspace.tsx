@@ -13,6 +13,7 @@ import {
   ImagePlus,
   Layers3,
   LoaderCircle,
+  MemoryStick,
   PanelLeft,
   Pencil,
   Pin,
@@ -35,6 +36,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   EngineRuntimeStatus,
+  ModelFitEstimate,
   ModelRecord,
   PromptSummary,
 } from "../../types/domain";
@@ -50,11 +52,14 @@ import {
 } from "./conversation-history";
 import {
   chatModelLabel,
+  fitLabel,
   groupChatModels,
   isEngineActive,
+  isModelFitBlocked,
   isSelectedModelReady,
 } from "./model-selection";
 import { chatMessagesWithSystemPrompt, rememberedPrompt } from "./prompt-selection";
+import { formatBytes } from "../../utils/format";
 
 const LAST_MODEL_KEY = "neuraloc.lastModelId";
 const LAST_PROMPT_KEY = "neuraloc.lastPromptVersionId";
@@ -70,6 +75,7 @@ export function ChatWorkspace() {
   const activeView = useAppStore((state) => state.activeView);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const [models, setModels] = useState<ModelRecord[]>([]);
+  const [modelFits, setModelFits] = useState<ModelFitEstimate[]>([]);
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationSearch, setConversationSearch] = useState("");
@@ -105,13 +111,15 @@ export function ChatWorkspace() {
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const [availableModels, status, availablePrompts, savedConversations] = await Promise.all([
+      const [availableModels, fits, status, availablePrompts, savedConversations] = await Promise.all([
         bridge.listModels(),
+        bridge.listModelFitEstimates().catch(() => []),
         bridge.getEngineStatus(),
         bridge.listPrompts(),
         bridge.listConversations(),
       ]);
       setModels(availableModels);
+      setModelFits(fits);
       setPrompts(availablePrompts);
       setConversations(savedConversations);
       setHistoryLoading(false);
@@ -255,12 +263,19 @@ export function ChatWorkspace() {
     if (viewport && autoScrollToBottom.current) viewport.scrollTop = viewport.scrollHeight;
   }, [messages]);
 
-  const groups = useMemo(() => groupChatModels(models), [models]);
+  const fitsByModelId = useMemo(
+    () => new Map(modelFits.map((estimate) => [estimate.modelId, estimate])),
+    [modelFits],
+  );
+  const groups = useMemo(() => groupChatModels(models, modelFits), [modelFits, models]);
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;
+  const selectedModelFit = selectedModelId ? fitsByModelId.get(selectedModelId) ?? null : null;
+  const selectedModelBlocked = isModelFitBlocked(selectedModelFit);
   const activeConversation = conversations.find((conversation) => conversation.id === conversationId) ?? null;
   const modelReady = isSelectedModelReady(selectedModelId, runtimeStatus);
   const generating = activeJobId !== null;
   const runtimeAvailable = runtimeStatus?.lifecycle !== "notInstalled";
+  const selectedLoadBlocked = !runtimeAvailable || selectedModelBlocked;
   const runtimeActive = isEngineActive(runtimeStatus);
   const chatMetrics = useMemo(
     () => calculateChatMetrics(
@@ -390,6 +405,11 @@ export function ChatWorkspace() {
     }
     const model = models.find((candidate) => candidate.id === value && candidate.verificationState === "ready");
     if (!model) return;
+    const estimate = fitsByModelId.get(model.id);
+    if (isModelFitBlocked(estimate)) {
+      setError(`${model.displayName} is currently over the conservative CPU memory budget. Free RAM or choose a smaller model.`);
+      return;
+    }
     if (messages.length > 0 && selectedModelId !== model.id) {
       const confirmed = await bridge.confirmModelConversationChange(model.displayName);
       if (!confirmed) return;
@@ -427,6 +447,14 @@ export function ChatWorkspace() {
 
   async function loadModel(model: ModelRecord) {
     setError(null);
+    if (!runtimeAvailable) {
+      setError("Install and verify the llama.cpp CPU runtime before loading a model.");
+      return;
+    }
+    if (isModelFitBlocked(fitsByModelId.get(model.id))) {
+      setError(`${model.displayName} is currently over the conservative CPU memory budget. Free RAM or choose a smaller model.`);
+      return;
+    }
     setModelOperation("load");
     try {
       let status = await bridge.getEngineStatus();
@@ -709,8 +737,17 @@ export function ChatWorkspace() {
           <option value="none">No model selected</option>
           {selectedModelId && !models.some((model) => model.id === selectedModelId)
             && <option disabled value={selectedModelId}>{activeConversation?.modelName ?? "Saved model"} - unavailable</option>}
-          {groups.ready.length > 0 && <optgroup label={runtimeAvailable ? "Ready" : "Missing backend"}>
-            {groups.ready.map((model) => <option disabled={!runtimeAvailable} key={model.id} value={model.id}>{chatModelLabel(model)}</option>)}
+          {!runtimeAvailable && groups.verified.length > 0 && <optgroup label="Missing backend">
+            {groups.verified.map((model) => <option disabled key={model.id} value={model.id}>{chatModelLabel(model, fitsByModelId.get(model.id))}</option>)}
+          </optgroup>}
+          {runtimeAvailable && groups.recommended.length > 0 && <optgroup label="Recommended">
+            {groups.recommended.map((model) => <option key={model.id} value={model.id}>{chatModelLabel(model, fitsByModelId.get(model.id))}</option>)}
+          </optgroup>}
+          {runtimeAvailable && groups.tight.length > 0 && <optgroup label="Tight or unconfirmed">
+            {groups.tight.map((model) => <option key={model.id} value={model.id}>{chatModelLabel(model, fitsByModelId.get(model.id))}</option>)}
+          </optgroup>}
+          {runtimeAvailable && groups.notRecommended.length > 0 && <optgroup label="Not recommended">
+            {groups.notRecommended.map((model) => <option disabled key={model.id} value={model.id}>{chatModelLabel(model, fitsByModelId.get(model.id))}</option>)}
           </optgroup>}
           {groups.unavailable.length > 0 && <optgroup label="Unavailable">
             {groups.unavailable.map((model) => <option disabled key={model.id} value={model.id}>{model.displayName} - {model.verificationState}</option>)}
@@ -729,6 +766,13 @@ export function ChatWorkspace() {
           {prompts.map((prompt) => <option key={prompt.latestVersionId} value={prompt.latestVersionId}>{prompt.pinned ? "Pinned - " : ""}{prompt.stableName} / v{prompt.latestVersion}</option>)}
           <option value="manage">Manage prompt library...</option>
         </select></label>
+        {selectedModelFit && <div
+          className={`chat-model-fit ${selectedModelFit.fit}`}
+          title={modelFitTitle(selectedModelFit)}
+        >
+          <MemoryStick size={14} />
+          <span><strong>{fitLabel(selectedModelFit.fit)}</strong><small>{formatBytes(selectedModelFit.estimatedRamBytes)} RAM</small></span>
+        </div>}
         <div className={`chat-runtime-state ${runtimeStatus?.lifecycle ?? "installed"}`}>
           {modelOperation === "load" || loading ? <LoaderCircle className="spin" size={14} /> : <span />}
           <small>{statusCopy}</small>
@@ -748,11 +792,15 @@ export function ChatWorkspace() {
         <h2>{modelReady ? "Ready for local chat" : "Start a local conversation"}</h2>
         <p>{modelReady
           ? `${selectedModel?.displayName ?? "Your model"} is loaded and ready.`
-          : selectedModel
-            ? `${selectedModel.displayName} is selected but not loaded.`
+          : selectedModel && !runtimeAvailable
+            ? "Install and verify the llama.cpp CPU runtime before loading this model."
+            : selectedModelBlocked
+            ? selectedModelFit?.reason ?? "This model exceeds the current CPU memory budget."
+            : selectedModel
+              ? `${selectedModel.displayName} is selected but not loaded.`
             : "Select an installed GGUF model and a system prompt. Messages stay on this device."}</p>
         {selectedModel && !modelReady
-          ? <button className="primary-button" disabled={modelOperation !== null} onClick={() => void loadModel(selectedModel)} type="button">{modelOperation === "load" ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />} Load model</button>
+          ? <button className="primary-button" disabled={modelOperation !== null || selectedLoadBlocked} onClick={() => void loadModel(selectedModel)} title={!runtimeAvailable ? "Verified CPU runtime required" : selectedModelBlocked ? selectedModelFit?.reason : "Load model"} type="button">{modelOperation === "load" ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />} {!runtimeAvailable ? "Runtime required" : selectedModelBlocked ? "Memory budget exceeded" : "Load model"}</button>
           : !selectedModel && <button className="secondary-button" onClick={() => setActiveView("models")} type="button"><Download size={16} /> Find a model</button>}
       </div> : <div aria-live="polite" className={`message-viewport ${error ? "has-error" : ""}`} onScroll={handleMessageScroll} ref={messageViewport}>
         {messages.map((message) => <article className={`chat-message ${message.role}`} key={message.id}>
@@ -907,6 +955,18 @@ function messageState(state: ChatGenerationState): LocalMessageState {
 function tokenMetric(value: number | null, approximate = false): string {
   if (value === null) return "--";
   return `${approximate ? "~" : ""}${value.toLocaleString()}`;
+}
+
+function modelFitTitle(estimate: ModelFitEstimate): string {
+  return [
+    estimate.reason,
+    `${formatBytes(estimate.weightBytes)} weights`,
+    `${formatBytes(estimate.kvCacheBytes)} KV cache at ${estimate.contextSize.toLocaleString()} context`,
+    `${formatBytes(estimate.runtimeOverheadBytes)} runtime overhead`,
+    `${formatBytes(estimate.availableRamBytes)} currently available`,
+    `${formatBytes(estimate.reservedRamBytes)} system reserve`,
+    `${estimate.confidence} confidence`,
+  ].join(" | ");
 }
 
 function readLastModelId(): string | null {

@@ -58,6 +58,7 @@ pub fn run() {
             commands::hardware_commands::get_hardware_snapshot,
             commands::hardware_commands::refresh_hardware,
             commands::model_commands::list_models,
+            commands::model_commands::list_model_fit_estimates,
             commands::model_commands::import_model,
             commands::model_commands::scan_model_folder,
             commands::model_commands::cancel_model_scan,

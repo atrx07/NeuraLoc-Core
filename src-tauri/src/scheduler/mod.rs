@@ -1,2 +1,2 @@
 mod job;
-mod resource_policy;
+pub(crate) mod resource_policy;

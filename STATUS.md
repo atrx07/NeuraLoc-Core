@@ -10,7 +10,7 @@ Current version: `0.1.0`
 
 NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, bounded chat generation, and immutable system prompts, and renders a polished desktop shell with functional Chat, Prompt Library, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
 
-This checkpoint has durable local chat with independent branches, exact rolling context admission, and an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. Before inference, the authenticated llama.cpp tokenizer counts the exact templated request and Rust keeps the system prompt, current user message, and newest complete turns that fit beside the output reserve. The full transcript remains durable, while each assistant draft stores the applied context report. A local opt-in Qwen3 4B count/stream/cancel/stop integration passed on 2026-07-15, and user desktop acceptance that day confirmed branch, retry, restart persistence, and prompt import. Multi-layer prompt composition, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
+This checkpoint has durable local chat with independent branches, exact rolling context admission, an optional immutable system-prompt version, and conservative live model-fit guidance for the verified CPU route, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. Before inference, the authenticated llama.cpp tokenizer counts the exact templated request and Rust keeps the system prompt, current user message, and newest complete turns that fit beside the output reserve. The full transcript remains durable, while each assistant draft stores the applied context report. Ready GGUF models are classified against current free RAM with an explicit reserve, confidence, context, weights, KV-cache, and runtime-overhead breakdown; known over-budget choices are disabled in Chat. A local opt-in Qwen3 4B count/stream/cancel/stop integration passed on 2026-07-15, and user desktop acceptance that day confirmed branch, retry, restart persistence, and prompt import. Multi-backend recommendations, multi-layer prompt composition, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -24,7 +24,7 @@ This checkpoint has durable local chat with independent branches, exact rolling 
 - Functional Settings view for theme, performance profile, model retention, idle timeout, internet access, web search, and local API state.
 - Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, llama.cpp package controls, per-model load/stop controls, runtime health, lifecycle state, and retained-log inspection.
 - Functional Prompt Library with native Markdown/text import, search, pinned-first summaries, exact source inspection, local creation, immutable version editing, duplicate provenance, pin/unpin, original/normalized export, and soft deletion.
-- Functional Chat model selector backed by the persisted model library, grouped ready/unavailable choices, last-used preference, runtime reuse/load/switch/unload controls, visible lifecycle state, and a composer gate tied to the selected ready session.
+- Functional Chat model selector backed by the persisted model library, grouped recommended/tight/not-recommended/unavailable choices, conservative live CPU RAM estimates, explicit confidence/component explanations, last-used renderer preference, runtime reuse/load/switch/unload controls, visible lifecycle state, and a composer gate tied to the selected ready session. Fit probing is advisory and cannot prevent Chat from opening; a known over-budget estimate disables that model choice.
 - Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, exact context telemetry, and usage footers. Native generation transactionally persists the user message, assistant draft, and rolling-window report before inference, then finalizes the exact streamed response, usage, token count, and terminal reason. The compact status strip reports admitted input/capacity and live kept/omitted history totals; per-message footers retain the omission decision. The history rail searches summary metadata, loads one conversation body on demand, restores model/prompt bindings and the last opened conversation, exposes inline rename/pin/export/delete actions, identifies branches, and becomes an overlay drawer at the 900px breakpoint. Message footers branch through a selected turn or retry an assistant response in a fresh branch while preserving the original. Interrupted drafts render explicitly instead of disappearing. Export reads SQLite through Rust and returns at most 16 MiB of Markdown with structured model, prompt, context, and generation-setting provenance. The 900 x 620 minimum window keeps the composer visible while the independent navigation and message regions scroll.
 - Catalog and Downloads tabs remain visibly disabled until the verified catalog checkpoint.
 - Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, read-only sample prompt/conversation records exercise library/history/restoration layouts, and native mutations are unavailable.
@@ -62,6 +62,7 @@ This checkpoint has durable local chat with independent branches, exact rolling 
 - Central model path validation requires absolute canonical regular files/folders, rejects device/traversal/symlink/reparse paths, limits imports to `.gguf`, and never deletes a model file.
 - Cheap verification checks GGUF magic/version, bounded counts and metadata sizes, modification time, path identity, and hard-link duplicates without loading tensors or complete model files into memory.
 - Bounded GGUF inspection extracts architecture, model name, file type/quantization, parameter count, context length, embedding length, layer count, and chat-template presence while retaining a small diagnostic metadata preview.
+- Conservative CPU-route fit estimation combines exact GGUF file size, a metadata-derived KV-cache estimate at the runtime's bounded context, runtime overhead, current available RAM, and a max(2 GiB, 10% installed RAM) system reserve. Missing shape metadata uses a bounded fallback and is labeled low confidence; known metadata is medium confidence until engine-native allocation data exists.
 - Recursive scans skip links, enforce depth/file limits, accept cancellation, and emit per-scan monotonically sequenced progress envelopes consumed by the frontend.
 - Settings service with defaults, persisted JSON storage, patch semantics, and validation:
   - idle unload timeout must be 1 through 240 minutes;
@@ -202,6 +203,7 @@ NeuraLoc-Core/
         |   |-- types.rs
         |   `-- mod.rs
         |-- models/
+        |   |-- fit.rs
         |   |-- gguf.rs
         |   |-- path_grants.rs
         |   |-- repository.rs
@@ -310,6 +312,7 @@ Indexes exist for prompt library ordering/version history, pinned/updated conver
 | `get_settings` | none | `AppSettings` | Returns the in-memory settings loaded from SQLite/defaults |
 | `update_settings` | typed partial `SettingsPatch` | `AppSettings` | Validates, normalizes dependent flags, persists JSON, and returns the full state |
 | `list_models` | none | `ModelRecord[]` | Returns sorted persisted model summaries and bounded GGUF metadata |
+| `list_model_fit_estimates` | none | `ModelFitEstimate[]` | Refreshes the hardware snapshot and returns conservative CPU-route estimates for ready models, including fit, confidence, context, components, reserve, and headroom |
 | `import_model` | granted absolute `.gguf` path | `ImportModelOutcome` | Canonicalizes, deduplicates, inspects, and persists ready/invalid state |
 | `scan_model_folder` | scan ID and granted folder | `ModelScanSummary` | Recursively discovers/imports GGUF files with limits and progress events |
 | `cancel_model_scan` | scan ID | boolean | Signals a live discovery/import scan to stop |
@@ -350,12 +353,12 @@ npm.cmd run tauri -- build --debug --no-bundle
 
 Current automated tests:
 
-- Frontend: 6 Vitest files, 21 tests for adaptive byte formatting, model metadata, selector grouping/readiness, exact/approximate context metrics, rolling kept/omitted reporting, stale-report rejection during preflight, immutable prompt/conversation restoration, persisted state mapping/order, inference-history filtering, first/later-turn retry planning, restored output-token bounds, and system-message ordering.
-- Rust: 51 passing default tests plus two ignored opt-in integration tests. Coverage includes newest-complete-turn rolling admission, mandatory-message preservation, invalid role-order rejection, persisted exact context reports, migration 7, transactional conversation behavior, and the existing prompt, chat, hardware, database, GGUF, model, process, and package suites.
+- Frontend: 6 Vitest files, 22 tests for adaptive byte formatting, model metadata, fit-aware selector grouping/labels/readiness, exact/approximate context metrics, rolling kept/omitted reporting, stale-report rejection during preflight, immutable prompt/conversation restoration, persisted state mapping/order, inference-history filtering, first/later-turn retry planning, restored output-token bounds, and system-message ordering.
+- Rust: 54 passing default tests plus two ignored opt-in integration tests. Coverage includes CPU model-fit estimates and confidence fallbacks, newest-complete-turn rolling admission, mandatory-message preservation, invalid role-order rejection, persisted exact context reports, migration 7, transactional conversation behavior, and the existing prompt, chat, hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, exact-token-counted, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-15.
 - Manual desktop acceptance: on 2026-07-15 the user confirmed that conversation branching and retry work with the local model, history survives application restart, and prompt import works end to end.
-- Responsive browser QA: the Chat shell has no document/status overflow at 1280 x 720, the composer remains fully visible at the native 900 x 620 minimum, and the 600 x 800 narrow layout remains usable with independent message scrolling and no console errors.
+- Responsive browser QA: the Chat shell and fit controls have no document/status overflow or toolbar collisions at 1280 x 720 and the native 900 x 620 minimum. At 600 x 800 the compact fit readout hides while the selector retains its estimate; there is no horizontal overflow or console error.
 
 The Tauri debug build also runs the production frontend build as its configured pre-build command.
 
@@ -367,7 +370,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 30,920,704 bytes, rebuilt on 2026-07-15 after exact rolling context admission and reporting. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 30,952,448 bytes, rebuilt on 2026-07-15 after live CPU model-fit estimation and selector grouping. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
@@ -376,6 +379,7 @@ Checkpoint size: 30,920,704 bytes, rebuilt on 2026-07-15 after exact rolling con
 - Rust is installed under `%USERPROFILE%\.cargo\bin`; terminals that do not inherit that user PATH require the session PATH command shown above.
 - npm may print a non-fatal `could not canonicalize path C:\Users\atrx07` warning in the current host environment.
 - Hardware discovery is partial: no Vulkan loader enumeration, Intel iGPU details, disks, battery/power state, instruction-set report, OpenVINO runtime probe, or robust driver/runtime version inventory exists yet.
+- Model-fit guidance currently covers only the verified CPU llama.cpp route. It is deliberately conservative, uses medium/low confidence instead of claiming exact peak allocation, and does not yet include CUDA/Vulkan VRAM, projector memory, backend compatibility probes, measured load time, or an override flow.
 - CUDA readiness currently means `nvidia-smi` responded; a compatible llama.cpp CUDA package has not been installed or validated.
 - The bundled engine catalog currently contains only llama.cpp `b9986` Windows x64 CPU. CUDA/Vulkan packages, resumable package downloads, package progress events, and package updates remain pending.
 - NPU detection is name/text based through `pnputil`; model compatibility still requires a future OpenVINO compile probe.
@@ -394,7 +398,7 @@ Checkpoint size: 30,920,704 bytes, rebuilt on 2026-07-15 after exact rolling con
 - Full SHA-256 verification/catalog matching, startup-wide missing-file reconciliation, automatic relocation discovery, and deliberate delete-file workflows for imported models.
 - Advanced GGUF compatibility normalization, RAM/VRAM estimates, projector pairing, hostile-format corpus coverage, and installed-engine validation.
 - A redistributable tensor-bearing GGUF fixture for normal CI, graceful protocol-level request draining, conservative OOM fallback, and crash recovery. The environment-selected real-model load/count/stream/cancel/stop test is opt-in and passed locally.
-- Advanced model selector compatibility/fit estimates, disabled-state explanations, load estimates, and Rust-persisted preference. Basic library-backed selection and runtime control are implemented.
+- Multi-backend model selector recommendations, projector/backend incompatibility explanations, measured load estimates, and Rust-persisted last-model preference. Live CPU fit groups, component/confidence explanations, over-budget disabling, library-backed selection, and runtime control are implemented.
 - Multi-layer prompt composition for tool policy, project instructions, memory, and the compiled-layer inspector. Markdown/text system-prompt import, versioning, editing, search, selector binding, and durable restoration are implemented.
 - Model-template options, Markdown rendering, reasoning presentation, and engine crash recovery. Exact rolling context budgeting, durable branched storage/history/restoration, startup interruption recovery, streaming, stop/retry, and live context visibility are implemented.
 - Incremental draft checkpoints during very long generations and pagination beyond the first 50 history summaries. Migration-backed branch/retry controls and repository-backed search/list/open/rename/pin/export/delete/final partial-response behavior are implemented.

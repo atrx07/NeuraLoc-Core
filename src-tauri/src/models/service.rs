@@ -13,16 +13,18 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AppError, AppResult},
+    hardware::HardwareSnapshot,
     storage::Database,
 };
 
 use super::{
+    fit::estimate_cpu_fit,
     gguf::inspect_gguf,
     path_grants::{GrantedModelFile, PathGrantService},
     repository::ModelRepository,
     types::{
-        ImportModelOutcome, ModelRecord, ModelScanIssue, ModelScanProgress, ModelScanSummary,
-        ScanModelFolderRequest, ScanPhase, VerificationState,
+        ImportModelOutcome, ModelFitEstimate, ModelRecord, ModelScanIssue, ModelScanProgress,
+        ModelScanSummary, ScanModelFolderRequest, ScanPhase, VerificationState,
     },
 };
 
@@ -45,6 +47,19 @@ impl ModelService {
 
     pub fn list(&self) -> AppResult<Vec<ModelRecord>> {
         self.repository.list()
+    }
+
+    pub fn list_fit_estimates(
+        &self,
+        hardware: &HardwareSnapshot,
+    ) -> AppResult<Vec<ModelFitEstimate>> {
+        Ok(self
+            .repository
+            .list()?
+            .into_iter()
+            .filter(|model| model.verification_state == VerificationState::Ready)
+            .map(|model| estimate_cpu_fit(&model, hardware))
+            .collect())
     }
 
     pub fn import_model(&self, path: &str) -> AppResult<ImportModelOutcome> {

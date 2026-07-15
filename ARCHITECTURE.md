@@ -138,6 +138,8 @@ The mounted Chat workspace holds the active renderer view, while Rust owns the d
 
 Context admission is also Rust-owned. For each generation, the llama.cpp adapter posts the same model, messages, and bounded chat-template kwargs to the authenticated `/v1/chat/completions/input_tokens` endpoint. The rolling policy reserves requested output plus a fixed safety margin, always keeps the optional system message and current user message, then admits the newest complete historical turns that fit. It never deletes or rewrites durable transcript messages. The exact capacity/input/retained/omitted decision is stored in the assistant message's `context_json`, returned by `start_chat_generation`, and emitted early through the sequenced `chat://context` stream.
 
+Model-fit calculation is likewise a Rust policy decision, not renderer arithmetic. `list_model_fit_estimates` refreshes the hardware snapshot and evaluates each ready GGUF against the currently verified CPU route using file size, metadata-derived KV cache at the bounded runtime context, conservative runtime overhead, current available RAM, and an explicit system reserve. The result includes fit label, confidence, assumptions, components, and headroom. Chat treats probe failure as an unknown advisory state so hardware telemetry cannot block workspace startup, while a successful known over-budget estimate disables that choice. CUDA/Vulkan/projector estimates remain unavailable until their engine packages and compatibility probes are concrete.
+
 ## SQLite schema
 
 SQLite runs in WAL mode with foreign keys enabled and a busy timeout. Large files stay outside the database.

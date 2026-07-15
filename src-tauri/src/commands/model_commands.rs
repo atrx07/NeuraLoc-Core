@@ -7,14 +7,25 @@ use crate::{
     app_state::AppState,
     errors::{AppError, IpcError},
     models::{
-        ImportModelOutcome, ImportModelRequest, ModelIdRequest, ModelRecord, ModelScanSummary,
-        ScanModelFolderRequest,
+        ImportModelOutcome, ImportModelRequest, ModelFitEstimate, ModelIdRequest, ModelRecord,
+        ModelScanSummary, ScanModelFolderRequest,
     },
 };
 
 #[tauri::command]
 pub fn list_models(state: State<'_, AppState>) -> Result<Vec<ModelRecord>, IpcError> {
     state.models.list().map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn list_model_fit_estimates(
+    state: State<'_, AppState>,
+) -> Result<Vec<ModelFitEstimate>, IpcError> {
+    let hardware = state.hardware.refresh().await?;
+    state
+        .models
+        .list_fit_estimates(&hardware)
+        .map_err(Into::into)
 }
 
 #[tauri::command]

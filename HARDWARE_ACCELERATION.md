@@ -43,6 +43,21 @@ kv_cache = layers * context_tokens * bytes_per_token_per_layer
 
 The engine adapter supplies exact coefficients when its metadata endpoint supports them. Otherwise the catalog provides conservative family-specific ranges. Vision projector memory is added separately.
 
+### Current CPU implementation
+
+The first implemented fit route is the pinned llama.cpp CPU backend. For each ready GGUF, Rust uses the exact file size as resident weights, caps the estimate to the runtime's current 4,096-token maximum, and calculates:
+
+```text
+known-shape KV cache = layers * context * embedding * 4 bytes
+unknown-shape KV fallback = max(file_size / 4, 256 MiB)
+runtime overhead = max(file_size / 10, 512 MiB)
+estimated RAM = file_size + KV cache + runtime overhead
+system reserve = max(2 GiB, 10% of installed RAM)
+usable current RAM = current available RAM - system reserve
+```
+
+The 4-byte KV coefficient conservatively represents fp16 K and V values across the full embedding. Known layer/embedding metadata receives `medium` confidence; the bounded fallback receives `low` confidence. The selector exposes the components and assumptions, groups `Excellent`/`Good` as recommended, keeps `Tight` or unconfirmed choices separate, and disables a successful `Not recommended` estimate. Fit probing is advisory: if a live hardware refresh fails, Chat still opens and marks the model unconfirmed. No CUDA/Vulkan VRAM or projector claim is made until those routes have verified engine packages and allocation data.
+
 For image pipelines, the estimate includes weights, text encoder, VAE, activation peak at requested dimensions/batch, backend workspace, and display reserve. Resolution therefore affects fit recommendations.
 
 ### Fit score

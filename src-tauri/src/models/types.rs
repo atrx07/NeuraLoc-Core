@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::scheduler::resource_policy::FitLabel;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationState {
@@ -71,6 +73,31 @@ pub struct ModelRecord {
     pub last_verified_at: Option<String>,
     #[serde(skip_serializing)]
     pub(crate) file_identity: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FitConfidence {
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelFitEstimate {
+    pub model_id: String,
+    pub route: String,
+    pub fit: FitLabel,
+    pub confidence: FitConfidence,
+    pub context_size: u32,
+    pub estimated_ram_bytes: u64,
+    pub available_ram_bytes: u64,
+    pub reserved_ram_bytes: u64,
+    pub weight_bytes: u64,
+    pub kv_cache_bytes: u64,
+    pub runtime_overhead_bytes: u64,
+    pub headroom_bytes: u64,
+    pub reason: String,
 }
 
 #[derive(Debug, Deserialize)]

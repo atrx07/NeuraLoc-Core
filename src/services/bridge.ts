@@ -18,6 +18,7 @@ import type {
   EventEnvelope,
   HardwareSnapshot,
   ImportModelOutcome,
+  ModelFitEstimate,
   ModelRecord,
   ModelScanProgress,
   ModelScanSummary,
@@ -364,8 +365,13 @@ export const bridge = {
   },
 
   async listModels(): Promise<ModelRecord[]> {
-    if (!isTauri()) return [];
+    if (!isTauri()) return [demoModelRecord()];
     return invoke<ModelRecord[]>("list_models");
+  },
+
+  async listModelFitEstimates(): Promise<ModelFitEstimate[]> {
+    if (!isTauri()) return [demoModelFitEstimate()];
+    return invoke<ModelFitEstimate[]>("list_model_fit_estimates");
   },
 
   async importModel(path: string): Promise<ImportModelOutcome> {
@@ -535,6 +541,58 @@ function demoEnginePackageStatus(): EnginePackageStatus {
       expectedFiles: ["llama-server.exe"],
     },
     installation: null,
+  };
+}
+
+function demoModelRecord(): ModelRecord {
+  return {
+    id: "demo-model-1",
+    kind: "llm",
+    displayName: "Qwen3 4B",
+    family: "qwen3",
+    format: "gguf",
+    path: "C:\\Models\\Qwen3-4B-Q4_K_M.gguf",
+    sizeBytes: 2.3 * 1024 ** 3,
+    sha256: null,
+    verificationState: "ready",
+    verificationError: null,
+    ggufMetadata: {
+      version: 3,
+      tensorCount: 1,
+      metadataCount: 12,
+      architecture: "qwen3",
+      name: "Qwen3 4B",
+      fileType: 15,
+      quantization: "Q4_K_M",
+      parameterCount: 4_000_000_000,
+      contextLength: 40_960,
+      embeddingLength: 2_560,
+      layerCount: 36,
+      hasChatTemplate: true,
+      metadataBytes: 4_096,
+      metadataPreview: {},
+    },
+    modifiedAtUnixMs: Date.now(),
+    importedAt: "2026-07-15T00:00:00Z",
+    lastVerifiedAt: "2026-07-15T00:00:00Z",
+  };
+}
+
+function demoModelFitEstimate(): ModelFitEstimate {
+  return {
+    modelId: "demo-model-1",
+    route: "cpu",
+    fit: "excellent",
+    confidence: "medium",
+    contextSize: 4_096,
+    estimatedRamBytes: 4.3 * 1024 ** 3,
+    availableRamBytes: 21.4 * 1024 ** 3,
+    reservedRamBytes: 3.2 * 1024 ** 3,
+    weightBytes: 2.3 * 1024 ** 3,
+    kvCacheBytes: 1.5 * 1024 ** 3,
+    runtimeOverheadBytes: 0.5 * 1024 ** 3,
+    headroomBytes: 13.9 * 1024 ** 3,
+    reason: "At least 30% estimated RAM headroom on the verified CPU route.",
   };
 }
 

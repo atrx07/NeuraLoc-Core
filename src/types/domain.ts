@@ -111,6 +111,25 @@ export interface ModelRecord {
   lastVerifiedAt: string | null;
 }
 
+export type ModelFitLabel = "excellent" | "good" | "tight" | "not_recommended";
+export type ModelFitConfidence = "medium" | "low";
+
+export interface ModelFitEstimate {
+  modelId: string;
+  route: "cpu";
+  fit: ModelFitLabel;
+  confidence: ModelFitConfidence;
+  contextSize: number;
+  estimatedRamBytes: number;
+  availableRamBytes: number;
+  reservedRamBytes: number;
+  weightBytes: number;
+  kvCacheBytes: number;
+  runtimeOverheadBytes: number;
+  headroomBytes: number;
+  reason: string;
+}
+
 export interface ImportModelOutcome {
   model: ModelRecord;
   alreadyIndexed: boolean;

@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-15 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity and exact token-count checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7 now has Rust-owned drafts/finalization/recovery, searchable lazy history, restart restoration, rename, pin, delete, bounded provenance-preserving Markdown export, independent branches, retry-into-branch, and persisted exact rolling-window reports connected end to end. User desktop acceptance on 2026-07-15 confirmed branch, retry, restart persistence, and prompt import. Immediate work is advanced selector fit behavior, followed by multi-layer prompt composition, incremental draft checkpoints/history pagination, and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-15 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity and exact token-count checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 4 now also has live conservative CPU-route RAM estimates, confidence/component explanations, fit-aware groups, and a disabled over-budget state. Step 5 is complete for the current single selected-prompt layer. Step 7 now has Rust-owned drafts/finalization/recovery, searchable lazy history, restart restoration, rename, pin, delete, bounded provenance-preserving Markdown export, independent branches, retry-into-branch, and persisted exact rolling-window reports connected end to end. User desktop acceptance on 2026-07-15 confirmed branch, retry, restart persistence, and prompt import. Immediate work is finishing selector persistence and backend/projector explanations, followed by multi-layer prompt composition, incremental draft checkpoints/history pagination, and the verified catalog.
 
 ## Dependency Map
 
@@ -98,7 +98,7 @@ Dependencies: step 1. The preferred implementation may use the pinned llama.cpp 
 - Extract architecture/family, parameter hints where available, quantization/file type, context length, embedding dimensions, layer count, tokenizer/chat template, model name, and vision/projector requirements.
 - Preserve unknown metadata keys in bounded diagnostic JSON instead of failing valid newer files.
 - Normalize metadata into typed columns used for filtering plus a versioned raw/normalized JSON payload for forward compatibility.
-- Compute conservative RAM/VRAM estimates with explicit confidence and assumptions. Backend compatibility remains unknown until the installed engine validates it.
+- Compute conservative RAM/VRAM estimates with explicit confidence and assumptions. The verified CPU route now estimates weights, KV cache, runtime overhead, reserve, and live headroom with medium/low confidence; CUDA/Vulkan VRAM and projector estimates remain pending. Backend compatibility remains unknown until the installed engine validates it.
 - Add `inspect_gguf`/reverify service behavior and update imported records transactionally.
 
 ### Acceptance gate
@@ -109,11 +109,11 @@ Dependencies: step 1. The preferred implementation may use the pinned llama.cpp 
 
 Dependencies: steps 1 and 3; step 2 is required before a model can be marked runnable.
 
-Basic selector status: completed on 2026-07-14. Chat is backed by persisted model records, groups ready and unavailable models, remembers the last selected ID separately from conversations, reuses the matching ready session, switches by stopping only the owned prior session, exposes Model Manager, and keeps the composer disabled until the selected session is ready. Advanced fit groups, projector/backend explanations, load estimates, and Rust-side preference persistence remain.
+Selector status: the basic path completed on 2026-07-14 and live CPU fit behavior completed on 2026-07-15. Chat is backed by persisted model records, groups recommended, tight/unconfirmed, not-recommended, and unavailable models, explains the CPU estimate and its confidence/components, disables known over-budget choices, remembers the last selected ID in renderer storage separately from conversations, reuses the matching ready session, switches by stopping only the owned prior session, exposes Model Manager, and keeps the composer disabled until the selected session is ready. Projector/backend explanations, measured load estimates, multi-backend fit, and Rust-side preference persistence remain.
 
 - Build a reusable selector backed by model summaries, not raw database rows.
-- Show display name, family, quantization, size, context, verification state, installed backend readiness, estimated fit, and missing-projector warnings.
-- Group choices as Ready, Tight/Experimental, Missing backend, Missing file, and Invalid. Do not allow incompatible models to start silently.
+- Show display name, family, quantization, size, context, verification state, installed backend readiness, estimated fit, and missing-projector warnings. CPU fit, confidence, context, and memory components are complete; projector/backend details remain.
+- Group choices as Ready, Tight/Experimental, Missing backend, Missing file, and Invalid. The current CPU selector implements recommended, tight/unconfirmed, not-recommended, and unavailable groups and blocks known memory over-budget choices.
 - Persist a global last-used model preference separately from each conversation's immutable model binding.
 - Connect the selector to Chat and expose an install/import action without navigating away from user context.
 - On selection, request a load estimate and then start/load through the engine service with visible progress and cancellation.
@@ -208,7 +208,7 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
 2. **Runtime checkpoint (completed 2026-07-15 for CPU):** verified llama.cpp install + lifecycle/logging + real Qwen load/count/stream/cancel/stop/no-orphan validation.
 3. **Prompt checkpoint (completed 2026-07-15):** secure Markdown/text import, immutable versioning, management workspace, adjacent selector, and ephemeral Chat binding.
-4. **Chat persistence checkpoint (in progress):** durable conversations, restart recovery, provenance-preserving Markdown export, branches, retry-into-branch, and exact rolling context management are complete; incremental draft checkpoints, history pagination, and engine crash recovery remain.
+4. **Chat persistence and fit checkpoint (in progress):** durable conversations, restart recovery, provenance-preserving Markdown export, branches, retry-into-branch, exact rolling context management, and conservative CPU fit groups are complete; selector persistence/backend explanations, incremental draft checkpoints, history pagination, and engine crash recovery remain.
 5. **Catalog checkpoint:** signed metadata + resumable verified downloads.
 
 At every checkpoint run frontend build/tests, Rust format/check/test/clippy, migration tests from empty and prior schemas, fake-engine lifecycle tests where applicable, and a Tauri debug smoke test. Do not move to the next checkpoint with orphaned processes, destructive migration changes, unbounded file reads, or renderer-owned native/network access.

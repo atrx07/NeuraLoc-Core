@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, exact model-tokenized rolling context admission, the secure versioned Prompt Library, durable conversation history, independent branches/retry, and provenance-preserving Markdown export are implemented. A real opt-in Qwen3 4B load/count/stream/cancel/stop test passed on 2026-07-15. Multi-layer prompt composition, advanced model fit behavior, incremental draft checkpoints, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, exact model-tokenized rolling context admission, conservative live CPU-route fit estimates, the secure versioned Prompt Library, durable conversation history, independent branches/retry, and provenance-preserving Markdown export are implemented. A real opt-in Qwen3 4B load/count/stream/cancel/stop test passed on 2026-07-15. Multi-backend fit recommendations, multi-layer prompt composition, incremental draft checkpoints, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -59,7 +59,7 @@ The current prototype runs GGUF models locally through the verified llama.cpp CP
 3. In the runtime section, install or import the pinned `llama.cpp CPU runtime`, then click `Verify` until it reports `Ready`. Online installation requires Internet access to be enabled in Settings; offline package import is supported when you already have the approved archive.
 4. Click `Import GGUF` and choose a model file, or use `Scan folder` for a directory containing GGUF files.
 5. Wait for the model row to show `Ready`. If the model is listed as missing or invalid, use `Verify` after confirming that the file still exists and is a regular `.gguf` file.
-6. Open `Chat`, choose the ready model in the `Model` selector, and wait for `Ready on CPU`. Selecting a ready model loads it into the owned local runtime.
+6. Open `Chat` and review the model's live CPU fit label and estimated RAM. Ready models are grouped as `Recommended`, `Tight or unconfirmed`, or disabled `Not recommended`; hover the compact fit readout for weights, KV cache, runtime overhead, current free RAM, safety reserve, context, and confidence. Choose a permitted model and wait for `Ready on CPU`. Selecting it loads the owned local runtime.
 7. Optional prompt test: open `Prompt Library`, import a UTF-8 `.md`/`.txt` document or create one locally, then return to Chat and choose its immutable version from the `System prompt` selector. Changing this selector after messages exist requires confirmation and starts a new conversation.
 8. Send a small first prompt such as:
 
@@ -81,6 +81,7 @@ The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.c
 
 - If an imported model does not appear in Chat, return to Model Manager and confirm that its verification state is `Ready`, then reopen Chat so it refreshes the model library.
 - If Chat says `No model selected`, choose the model from the selector rather than typing into the composer. The composer stays disabled until the matching runtime session is ready.
+- If a model is disabled as `Not recommended`, current free RAM after NeuraLoc-Core's system reserve is below its conservative CPU estimate. Close memory-heavy applications or choose a smaller/stronger quantization; the current checkpoint does not silently override the safety gate.
 - If a response is still generating, use the visible stop button. Open `Logs` or the runtime log section in Model Manager if the process reports an error.
 - Before the model reports its admission decision, the context strip may show a `~` approximate preview. The authenticated llama.cpp tokenizer then replaces it with the exact input count and rolling-window kept/omitted totals. If the system prompt plus current user message cannot fit beside the selected output reserve, shorten them or lower maximum output.
 - Native chat turns are transactionally stored in SQLite before generation and finalized with usage/terminal state afterward. The rail supports search, lazy open, rename, pin, branch, provenance-preserving Markdown export, delete, and restart restoration; Retry always generates into a new branch, and an interrupted draft is shown explicitly rather than disappearing.
@@ -93,7 +94,7 @@ npm.cmd run dev
 
 Open `http://localhost:1420`. Browser mode uses representative hardware data and in-memory settings. It does not test native hardware probes, SQLite, child processes, filesystem access, or Tauri IPC.
 
-Browser mode includes read-only sample prompt and conversation records for layout, selector, history, and restoration testing. Native mutations and SQLite persistence require the Tauri desktop app.
+Browser mode includes read-only sample prompt and conversation records plus a representative CPU fit estimate for layout, selector, history, and restoration testing. Native hardware values, mutations, and SQLite persistence require the Tauri desktop app.
 
 ## Verification
 
