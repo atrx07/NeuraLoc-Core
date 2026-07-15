@@ -1,14 +1,15 @@
 use std::{path::Path, sync::Arc};
 
 use crate::{
-    engine_packages::EnginePackageService, engines::EngineRuntimeService, errors::AppResult,
-    events::EventEmitter, hardware::HardwareService, models::ModelService,
-    processes::ProcessManager, prompts::PromptService, settings::SettingsService,
-    storage::Database,
+    conversations::ConversationService, engine_packages::EnginePackageService,
+    engines::EngineRuntimeService, errors::AppResult, events::EventEmitter,
+    hardware::HardwareService, models::ModelService, processes::ProcessManager,
+    prompts::PromptService, settings::SettingsService, storage::Database,
 };
 
 pub struct AppState {
     pub database: Arc<Database>,
+    pub conversations: Arc<ConversationService>,
     pub events: Arc<EventEmitter>,
     pub engine_packages: Arc<EnginePackageService>,
     pub engines: Arc<EngineRuntimeService>,
@@ -44,6 +45,7 @@ impl AppState {
             data_directory,
         )?);
         let models = Arc::new(ModelService::new(Arc::clone(&database)));
+        let conversations = Arc::new(ConversationService::new(Arc::clone(&database))?);
         let processes = Arc::new(ProcessManager::default());
         let prompts = Arc::new(PromptService::new(Arc::clone(&database)));
         let engines = Arc::new(EngineRuntimeService::new(
@@ -55,6 +57,7 @@ impl AppState {
         let settings = SettingsService::load(Arc::clone(&database))?;
         Ok(Self {
             database,
+            conversations,
             events,
             engine_packages,
             engines,

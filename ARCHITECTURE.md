@@ -123,6 +123,7 @@ Repositories own SQL and return domain records. Migrations are ordered, transact
 `AppState` contains thread-safe handles to services, not mutable business records:
 
 - `Database`
+- `ConversationService`
 - `HardwareService`
 - `ProcessManager`
 - `Scheduler`
@@ -133,7 +134,7 @@ Repositories own SQL and return domain records. Migrations are ordered, transact
 
 React state is split into UI session state, persisted user settings, and server-derived snapshots. Zustand stores own only their feature state. TanStack Query may be introduced for cached IPC reads once request volume warrants it.
 
-The mounted Chat workspace holds an immutable selected prompt version for the current ephemeral conversation. It refreshes latest library summaries after Prompt Library navigation without replacing an older bound version. Generation places the exact compiled prompt content first with the `system` role; changing the selection after a turn explicitly starts a new conversation. SQLite-backed conversation ownership replaces this renderer binding in the persistence checkpoint.
+The mounted Chat workspace holds the active renderer view, while Rust owns the durable conversation record. `start_chat_generation` transactionally creates the conversation plus user message and assistant draft before inference, accumulates the exact streamed assistant text, and finalizes content, usage, and terminal state before emitting completion. Startup marks any remaining drafts as interrupted. The selected model and immutable prompt version are conversation bindings; the history UI loads their records lazily instead of placing all message content in global state.
 
 ## SQLite schema
 
@@ -217,7 +218,13 @@ CREATE TABLE messages (
   content_json TEXT NOT NULL,
   token_count INTEGER,
   pinned INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'complete',
+  job_id TEXT,
+  usage_json TEXT,
+  terminal_reason TEXT,
+  position INTEGER,
+  updated_at TEXT
 );
 
 CREATE TABLE downloads (
@@ -297,7 +304,7 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `start_engine` | model ID, optional context/threads | ready engine status |
 | `stop_engine` | engine session ID | final engine status |
 | `get_engine_logs` | engine session ID | bounded redacted log snapshot |
-| `start_chat_generation` | job/conversation/message/session IDs, bounded messages, output limit | non-thinking visible text, completed/cancelled result, and usage while token events stream |
+| `start_chat_generation` | job/conversation/user/assistant/session IDs, prompt version, bounded messages, output limit | durable draft/final state plus non-thinking streamed text and usage |
 | `cancel_chat_generation` | job ID | cancellation accepted |
 | `submit_job` | typed job request | job ID |
 | `cancel_job` | job ID | accepted/current state |
@@ -312,7 +319,10 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `export_prompt` | version ID and original/normalized mode | file name and document content |
 | `compile_prompt` | immutable version ID | exact selected-prompt content and approximate token estimate |
 | `list_conversations` | search/page | conversation summaries |
-| `send_chat_message` | conversation/message/settings | job ID |
+| `get_conversation` | conversation ID | binding/settings plus ordered messages |
+| `rename_conversation` | conversation ID and title | updated conversation detail |
+| `set_conversation_pinned` | conversation ID and pin state | updated conversation detail |
+| `delete_conversation` | conversation ID | cascade deletion result |
 | `get_diagnostics` | redaction level | diagnostics bundle preview |
 
 Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes. Model scan progress plus engine state/log events are implemented; the remaining names are contracts for later phases:

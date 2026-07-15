@@ -213,6 +213,11 @@ export function ChatWorkspace() {
     }
     const model = models.find((candidate) => candidate.id === value && candidate.verificationState === "ready");
     if (!model) return;
+    if (messages.length > 0 && selectedModelId !== model.id) {
+      const confirmed = await bridge.confirmModelConversationChange(model.displayName);
+      if (!confirmed) return;
+      await newConversation();
+    }
     setSelectedModelId(model.id);
     writeLastModelId(model.id);
     await loadModel(model);
@@ -317,8 +322,10 @@ export function ChatWorkspace() {
       const result = await bridge.startChatGeneration({
         jobId,
         conversationId,
+        userMessageId: userMessage.id,
         messageId: assistantMessageId,
         sessionId: runtimeStatus.sessionId,
+        promptVersionId: selectedPrompt?.versionId ?? null,
         messages: requestMessages,
         maxOutputTokens: 1024,
       });

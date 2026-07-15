@@ -1,5 +1,6 @@
 mod app_state;
 mod commands;
+mod conversations;
 mod engine_packages;
 mod engines;
 mod errors;
@@ -36,6 +37,11 @@ pub fn run() {
             commands::app_commands::get_app_snapshot,
             commands::chat_commands::start_chat_generation,
             commands::chat_commands::cancel_chat_generation,
+            commands::conversation_commands::list_conversations,
+            commands::conversation_commands::get_conversation,
+            commands::conversation_commands::rename_conversation,
+            commands::conversation_commands::set_conversation_pinned,
+            commands::conversation_commands::delete_conversation,
             commands::engine_package_commands::list_engine_packages,
             commands::engine_package_commands::install_engine_package,
             commands::engine_package_commands::import_engine_package,

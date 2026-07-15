@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, loads and streams locally, and shows exact/approximate context telemetry. Step 5 is complete for the current single selected-prompt layer: the secure parser/repository/commands, full Prompt Library management workspace, adjacent Chat selector, immutable binding, explicit prompt-change/new-conversation confirmation, system-role compilation, and prompt token telemetry are implemented. Immediate next work is Step 7 conversation/message persistence, followed by enforced context strategies, advanced selector fit behavior, multi-layer prompt composition, and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7's Rust durability slice now transactionally stores each user turn and assistant draft before inference, finalizes streamed text/usage/terminal state, recovers abandoned drafts on startup, and exposes list/open/rename/pin/delete commands. Immediate work is the lazy Chat history/restoration interface, followed by branches/retry/export, enforced context strategies, advanced selector fit behavior, multi-layer prompt composition, and the verified catalog.
 
 ## Dependency Map
 
@@ -126,7 +126,7 @@ Basic selector status: completed on 2026-07-14. Chat is backed by persisted mode
 
 Dependencies: shared repository/path work from step 1. Can run in parallel with steps 2 and 3.
 
-Status: completed on 2026-07-15 for the selected user-prompt layer. Migration 4, bounded parsing, path/dialog grants, immutable versions, provenance, soft deletion, export/compile commands, the management workspace, editor, search, pin/duplicate/delete actions, adjacent Chat selector, and immutable system-role binding are implemented. Durable conversation references arrive with Step 7; tool/project/memory layers remain later composition work.
+Status: completed on 2026-07-15 for the selected user-prompt layer. Migration 4, bounded parsing, path/dialog grants, immutable versions, provenance, soft deletion, export/compile commands, the management workspace, editor, search, pin/duplicate/delete actions, adjacent Chat selector, and immutable system-role binding are implemented. Step 7 now persists the exact prompt-version reference for native turns; restoring it in the history UI and tool/project/memory layers remain later work.
 
 ### Import and persistence
 
@@ -150,7 +150,7 @@ Status: completed on 2026-07-15 for the selected user-prompt layer. Migration 4,
 
 Dependencies: steps 2, 4, and 5 plus working event sequencing.
 
-Basic streaming status: completed on 2026-07-14, with context visibility and immutable system-prompt compilation added on 2026-07-15. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, emits usage and terminal state, and cancels one active generation. Chat renders ephemeral user/assistant messages, sends the bound prompt as the first system role, ignores stale event sequences, and presents the loaded context capacity plus exact or explicitly approximate live usage. Durable jobs/messages, retry, enforced context management, OOM fallback, and crash recovery remain before the full acceptance gate is complete.
+Basic streaming status: completed on 2026-07-14, with context visibility and immutable system-prompt compilation added on 2026-07-15. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, persists user/draft records before inference, finalizes exact streamed text/usage/terminal state, and cancels one active generation. Chat renders the live turn and presents exact or explicitly approximate usage. History restoration, retry, enforced context management, OOM fallback, and engine crash recovery remain before the full acceptance gate is complete.
 
 ### Backend
 
@@ -173,6 +173,8 @@ Basic streaming status: completed on 2026-07-14, with context visibility and imm
 ## 7. Conversation Persistence
 
 Dependencies: step 6 contracts, step 4 model identity, and step 5 prompt-version identity. Implement the repository before declaring streaming chat complete so messages are crash recoverable.
+
+Backend status: completed on 2026-07-15 for the linear conversation path. Migration 5, repository/service ownership, transactional user/draft creation, deterministic message positions and parent links, terminal content/usage/state finalization, startup interruption recovery, list/page/search/open/rename/pin/delete commands, and cascade/foreign-key tests are implemented. The Chat history interface, lazy restoration, branching, retry, and export remain active work.
 
 - Add `ConversationRepository` and `MessageRepository` using the existing tables, with explicit transactions for conversation creation, user messages, assistant draft/finalization, branch parentage, and timestamps.
 - Persist the user message before launching generation. Create an assistant draft tied to the job, append/finalize in bounded checkpoints or persist a final content record, and mark interrupted drafts on startup.

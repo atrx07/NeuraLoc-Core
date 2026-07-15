@@ -30,6 +30,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "prompt_library",
         sql: include_str!("../../migrations/0004_prompt_library.sql"),
     },
+    Migration {
+        version: 5,
+        name: "conversation_persistence",
+        sql: include_str!("../../migrations/0005_conversation_persistence.sql"),
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> AppResult<()> {
@@ -78,7 +83,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 5);
     }
 
     #[test]
@@ -124,5 +129,18 @@ mod tests {
         assert!(prompt_version_columns.contains(&"raw_document".to_string()));
         assert!(prompt_version_columns.contains(&"source_profile_id".to_string()));
         assert!(prompt_version_columns.contains(&"source_version_id".to_string()));
+        let message_columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(messages)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(message_columns.contains(&"state".to_string()));
+        assert!(message_columns.contains(&"job_id".to_string()));
+        assert!(message_columns.contains(&"usage_json".to_string()));
+        assert!(message_columns.contains(&"terminal_reason".to_string()));
+        assert!(message_columns.contains(&"position".to_string()));
+        assert!(message_columns.contains(&"updated_at".to_string()));
     }
 }

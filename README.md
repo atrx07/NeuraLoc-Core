@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, live context telemetry, navigation-safe ephemeral state, and the secure versioned Prompt Library with immutable Chat binding are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Durable conversation history, multi-layer prompt composition, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, live context telemetry, the secure versioned Prompt Library, and the Rust conversation-persistence backend are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Chat history browsing/restoration, multi-layer prompt composition, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -79,7 +79,7 @@ The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.c
 - If Chat says `No model selected`, choose the model from the selector rather than typing into the composer. The composer stays disabled until the matching runtime session is ready.
 - If a response is still generating, use the visible stop button. Open `Logs` or the runtime log section in Model Manager if the process reports an error.
 - If the context strip shows a `~` prefix during generation, the number is an explicitly approximate live estimate. Final llama.cpp usage replaces it after the response completes.
-- Current chat turns are retained in the mounted workspace while navigating, but conversation history is still ephemeral and is not restored after an application restart.
+- New native chat turns are transactionally stored in SQLite before generation and finalized with usage/terminal state afterward. The history list and restart restoration UI are the active next slice, so stored turns are not selectable in Chat yet.
 
 ## Browser UI Preview
 

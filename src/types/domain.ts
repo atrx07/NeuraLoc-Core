@@ -252,8 +252,10 @@ export type ChatGenerationState = "started" | "completed" | "cancelled" | "faile
 export interface StartChatGenerationRequest {
   jobId: string;
   conversationId: string;
+  userMessageId: string;
   messageId: string;
   sessionId: string;
+  promptVersionId: string | null;
   messages: ChatMessageInput[];
   maxOutputTokens: number;
 }

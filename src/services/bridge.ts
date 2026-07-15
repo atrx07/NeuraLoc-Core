@@ -384,10 +384,21 @@ export const bridge = {
   },
 
   async confirmPromptConversationChange(name: string): Promise<boolean> {
-    const message = `Start a new conversation with ${name}? The current in-memory conversation will be cleared.`;
+    const message = `Start a new conversation with ${name}? The current conversation will remain in local history.`;
     if (!isTauri()) return window.confirm(message);
     return confirm(message, {
       title: "Change system prompt",
+      kind: "info",
+      okLabel: "New conversation",
+      cancelLabel: "Keep current",
+    });
+  },
+
+  async confirmModelConversationChange(name: string): Promise<boolean> {
+    const message = `Start a new conversation with ${name}? The current conversation will remain in local history.`;
+    if (!isTauri()) return window.confirm(message);
+    return confirm(message, {
+      title: "Change chat model",
       kind: "info",
       okLabel: "New conversation",
       cancelLabel: "Keep current",

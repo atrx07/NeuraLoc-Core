@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     app_state::AppState,
+    conversations::{BeginTurnInput, ConversationMessageState},
     engines::traits::{ChatRequest, TokenChunk, Usage},
     errors::{AppError, AppResult, IpcError},
     events::EventEmitter,
@@ -38,8 +39,10 @@ struct ChatMessage {
 pub struct StartChatGenerationRequest {
     job_id: String,
     conversation_id: String,
+    user_message_id: String,
     message_id: String,
     session_id: String,
+    prompt_version_id: Option<String>,
     messages: Vec<ChatMessage>,
     max_output_tokens: u32,
 }
@@ -110,13 +113,44 @@ pub async fn start_chat_generation(
         );
     }
 
-    emit_state(
+    let model_id = runtime
+        .model_id
+        .as_deref()
+        .ok_or_else(|| AppError::Engine("the ready model session has no model identity".into()))?;
+    let user_content = request
+        .messages
+        .last()
+        .map(|message| message.content.as_str())
+        .ok_or_else(|| AppError::Operation("the chat request has no user message".into()))?;
+    state.conversations.begin_turn(BeginTurnInput {
+        conversation_id: &request.conversation_id,
+        user_message_id: &request.user_message_id,
+        assistant_message_id: &request.message_id,
+        job_id: &request.job_id,
+        model_id,
+        prompt_version_id: request.prompt_version_id.as_deref(),
+        user_content,
+        max_output_tokens: request.max_output_tokens,
+    })?;
+
+    if let Err(error) = emit_state(
         &app,
         &state.events,
         &request,
         ChatGenerationState::Started,
         None,
-    )?;
+    ) {
+        let detail = error.to_string();
+        let _ = state.conversations.finalize_assistant(
+            &request.message_id,
+            &request.job_id,
+            "",
+            ConversationMessageState::Failed,
+            None,
+            Some(&detail),
+        );
+        return Err(error.into());
+    }
     let messages_json = serde_json::to_string(&request.messages).map_err(|error| {
         AppError::Operation(format!("chat messages could not be encoded: {error}"))
     })?;
@@ -140,12 +174,44 @@ pub async fn start_chat_generation(
             sink,
         )
         .await;
-    emitter
+    let delivery = emitter
         .await
-        .map_err(|error| AppError::Operation(format!("chat token delivery stopped: {error}")))??;
+        .map_err(|error| AppError::Operation(format!("chat token delivery stopped: {error}")))
+        .and_then(|result| result);
+    let generated_text = match delivery {
+        Ok(content) => content,
+        Err(error) => {
+            let detail = error.to_string();
+            let _ = state.conversations.finalize_assistant(
+                &request.message_id,
+                &request.job_id,
+                "",
+                ConversationMessageState::Failed,
+                None,
+                Some(&detail),
+            );
+            let _ = emit_state(
+                &app,
+                &state.events,
+                &request,
+                ChatGenerationState::Failed,
+                Some(detail),
+            );
+            clear_event_streams(&state.events, &request.job_id);
+            return Err(error.into());
+        }
+    };
 
     match result {
         Ok(usage) => {
+            state.conversations.finalize_assistant(
+                &request.message_id,
+                &request.job_id,
+                &generated_text,
+                ConversationMessageState::Complete,
+                Some(&usage),
+                Some("completed"),
+            )?;
             state.events.emit(
                 &app,
                 "chat://usage",
@@ -171,6 +237,14 @@ pub async fn start_chat_generation(
             })
         }
         Err(AppError::Cancelled(detail)) => {
+            state.conversations.finalize_assistant(
+                &request.message_id,
+                &request.job_id,
+                &generated_text,
+                ConversationMessageState::Cancelled,
+                None,
+                Some("cancelled_by_user"),
+            )?;
             emit_state(
                 &app,
                 &state.events,
@@ -186,12 +260,27 @@ pub async fn start_chat_generation(
             })
         }
         Err(error) => {
+            let detail = error.to_string();
+            if let Err(persistence_error) = state.conversations.finalize_assistant(
+                &request.message_id,
+                &request.job_id,
+                &generated_text,
+                ConversationMessageState::Failed,
+                None,
+                Some(&detail),
+            ) {
+                tracing::error!(
+                    job_id = %request.job_id,
+                    %persistence_error,
+                    "failed to finalize an errored assistant draft"
+                );
+            }
             emit_state(
                 &app,
                 &state.events,
                 &request,
                 ChatGenerationState::Failed,
-                Some(error.to_string()),
+                Some(detail),
             )?;
             clear_event_streams(&state.events, &request.job_id);
             Err(error.into())
@@ -216,10 +305,11 @@ async fn emit_token_batches(
     conversation_id: String,
     message_id: String,
     mut receiver: mpsc::Receiver<TokenChunk>,
-) -> AppResult<()> {
+) -> AppResult<String> {
     let mut interval = tokio::time::interval(TOKEN_BATCH_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut pending = String::new();
+    let mut complete = String::new();
     let mut last_sequence = 0_u64;
     loop {
         tokio::select! {
@@ -229,6 +319,7 @@ async fn emit_token_batches(
                         continue;
                     }
                     last_sequence = chunk.sequence;
+                    complete.push_str(&chunk.text);
                     pending.push_str(&chunk.text);
                     if pending.len() >= TOKEN_BATCH_BYTES {
                         emit_token_batch(&app, &events, &job_id, &conversation_id, &message_id, &mut pending)?;
@@ -236,7 +327,7 @@ async fn emit_token_batches(
                 }
                 None => {
                     emit_token_batch(&app, &events, &job_id, &conversation_id, &message_id, &mut pending)?;
-                    return Ok(());
+                    return Ok(complete);
                 }
             },
             _ = interval.tick() => {
@@ -301,8 +392,12 @@ fn clear_event_streams(events: &EventEmitter, job_id: &str) {
 fn validate_request(request: &StartChatGenerationRequest) -> AppResult<()> {
     validate_id(&request.job_id, "chat job")?;
     validate_id(&request.conversation_id, "conversation")?;
+    validate_id(&request.user_message_id, "user message")?;
     validate_id(&request.message_id, "message")?;
     validate_id(&request.session_id, "engine session")?;
+    if let Some(prompt_version_id) = &request.prompt_version_id {
+        validate_id(prompt_version_id, "prompt version")?;
+    }
     if request.messages.is_empty() || request.messages.len() > MAX_MESSAGES {
         return Err(AppError::Operation(format!(
             "chat requires between 1 and {MAX_MESSAGES} messages"
@@ -353,8 +448,10 @@ mod tests {
         StartChatGenerationRequest {
             job_id: "job-1".into(),
             conversation_id: "conversation-1".into(),
+            user_message_id: "user-message-1".into(),
             message_id: "message-1".into(),
             session_id: "session-1".into(),
+            prompt_version_id: None,
             messages: vec![ChatMessage {
                 role: ChatRole::User,
                 content: "Hello".into(),

@@ -23,6 +23,10 @@ pub enum AppError {
     InvalidPrompt(String),
     #[error("The prompt record was not found: {0}")]
     PromptNotFound(String),
+    #[error("The conversation is invalid: {0}")]
+    InvalidConversation(String),
+    #[error("The conversation was not found: {0}")]
+    ConversationNotFound(String),
     #[error("The record changed before the operation completed: {0}")]
     Conflict(String),
     #[error("The engine package operation failed: {0}")]
@@ -84,6 +88,14 @@ impl From<AppError> for IpcError {
             AppError::PromptNotFound(_) => (
                 "prompt_not_found",
                 "Refresh the prompt library and try again.",
+            ),
+            AppError::InvalidConversation(_) => (
+                "invalid_conversation",
+                "Refresh the conversation and review the requested change.",
+            ),
+            AppError::ConversationNotFound(_) => (
+                "conversation_not_found",
+                "Refresh the conversation list and try again.",
             ),
             AppError::Conflict(_) => (
                 "conflict",

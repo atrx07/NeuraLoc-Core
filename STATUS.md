@@ -10,7 +10,7 @@ Current version: `0.1.0`
 
 NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, bounded chat generation, and immutable system prompts, and renders a polished desktop shell with functional Chat, Prompt Library, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
 
-This checkpoint is usable for ephemeral local chat with an optional immutable system-prompt version, but it is not yet a complete local inference product. A local opt-in integration test loaded the user's Qwen3 4B Q4_K_M GGUF, authenticated the pinned `b9986` server, streamed a response with usage, cancelled a second active request, stopped the server, and confirmed zero owned child processes on 2026-07-14. The model file remains external and is not stored in the repository. Conversation persistence, multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
+This checkpoint has a durable Rust conversation backend with an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. The current Chat UI still shows only its mounted conversation and cannot browse or restore those records yet. A local opt-in Qwen3 4B integration passed on 2026-07-14. Multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -25,7 +25,7 @@ This checkpoint is usable for ephemeral local chat with an optional immutable sy
 - Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, llama.cpp package controls, per-model load/stop controls, runtime health, lifecycle state, and retained-log inspection.
 - Functional Prompt Library with native Markdown/text import, search, pinned-first summaries, exact source inspection, local creation, immutable version editing, duplicate provenance, pin/unpin, original/normalized export, and soft deletion.
 - Functional Chat model selector backed by the persisted model library, grouped ready/unavailable choices, last-used preference, runtime reuse/load/switch/unload controls, visible lifecycle state, and a composer gate tied to the selected ready session.
-- Ephemeral Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, plain-text rendering, and prompt/output token plus tokens-per-second usage when llama.cpp reports it. The adjacent prompt selector remembers and compiles an immutable version, sends its exact content as the first system role, retains older bound versions across library edits, and requires confirmation/new-conversation creation for a mid-chat change. Usage is rendered at the end of each assistant response. A compact live strip reports loaded context capacity, exact/approximate usage, selected prompt version, output progress, generation state, speed, and CPU/backend route. The mounted Chat workspace retains its in-memory messages and generation listeners while navigating elsewhere in the app. Messages currently live only in renderer memory and do not survive an application restart.
+- Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, and usage telemetry. The adjacent prompt selector binds an immutable version and sends its exact content as the first system role. Native generation now transactionally persists the user message and assistant draft before inference, then finalizes the exact streamed response, usage, token count, and terminal reason. The mounted UI still retains only the active renderer view; history browsing/restoration is the next slice.
 - Catalog and Downloads tabs remain visibly disabled until the verified catalog checkpoint.
 - Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, a read-only sample prompt exercises library/selector layouts, and native mutations are unavailable.
 - Typed frontend domain interfaces for app snapshots, settings, hardware, local models, GGUF metadata, engine packages, runtime lifecycle/health/logs, chat requests/results/usage/events, scan/engine events, navigation, and IPC errors.
@@ -39,10 +39,12 @@ This checkpoint is usable for ephemeral local chat with an optional immutable sy
 - Additive migration 2 extends model records with verification state/error, bounded GGUF metadata JSON, modification time, and stable file identity.
 - Additive migration 3 adds engine-package identity, route, install path, archive checksum, installed-file inventory, state, source, errors, and install/verification timestamps.
 - Additive migration 4 adds prompt profile timestamps, exact raw source documents, duplicate provenance, and prompt-library indexes without modifying the foundation migration.
-- Thread-safe `AppState` containing `Database`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, `PromptService`, and `SettingsService` handles.
+- Additive migration 5 adds assistant draft state, job/usage/terminal metadata, deterministic message positions, recovery timestamps, and conversation/message indexes.
+- Thread-safe `AppState` containing `Database`, `ConversationService`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, `PromptService`, and `SettingsService` handles.
 - Stable application and IPC error types with machine-readable error codes and user-facing suggestions.
 - Model repository/service and typed commands for list, import, recursive scan, cancellation, reverify, and record removal.
 - Prompt repository/service and typed commands for search/list, native-dialog import, create, immutable version save, historical version read, duplicate, pin, soft delete, original/normalized export, and exact-content compile.
+- Conversation repository/service and typed commands for deterministic list/page/search, lazy open, rename, pin, and cascade delete. Turn creation stores the conversation binding, linear parentage, user message, and assistant draft in one transaction; finalization stores exact text, usage, token count, and terminal reason, while startup marks abandoned drafts interrupted.
 - Prompt parsing accepts bounded UTF-8 `.md`/`.txt` documents with an optional BOM and leading YAML 1.2 front matter, preserves source content and line endings, rejects aliases/anchors/custom tags/excessive nesting, validates known metadata, preserves unknown fields as inert JSON, and hashes canonical metadata plus exact content for no-op duplicate detection.
 - Engine-package repository/service and typed commands for status, online install, offline import, reverify, and uninstall.
 - Bundled manifest 1 pins llama.cpp `b9986` Windows x64 CPU to its official HTTPS asset, exact 18,245,837-byte size, SHA-256, route, architecture, and expected runtime files.
@@ -152,7 +154,8 @@ NeuraLoc-Core/
     |   |-- 0001_foundation.sql
     |   |-- 0002_model_library.sql
     |   |-- 0003_engine_packages.sql
-    |   `-- 0004_prompt_library.sql
+    |   |-- 0004_prompt_library.sql
+    |   `-- 0005_conversation_persistence.sql
     |-- icons/                 # generated desktop/mobile icon bundle
     |-- gen/schemas/           # generated Tauri capability schemas
     `-- src/
@@ -164,12 +167,18 @@ NeuraLoc-Core/
         |-- commands/
         |   |-- app_commands.rs
         |   |-- chat_commands.rs
+        |   |-- conversation_commands.rs
         |   |-- engine_commands.rs
         |   |-- engine_package_commands.rs
         |   |-- hardware_commands.rs
         |   |-- model_commands.rs
         |   |-- prompt_commands.rs
         |   |-- settings_commands.rs
+        |   `-- mod.rs
+        |-- conversations/
+        |   |-- repository.rs
+        |   |-- service.rs
+        |   |-- types.rs
         |   `-- mod.rs
         |-- engines/
         |   |-- llama_cpp.rs
@@ -238,8 +247,9 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 - `src-tauri/migrations/0002_model_library.sql` is migration version 2, name `model_library`; version 1 remains unchanged.
 - `src-tauri/migrations/0003_engine_packages.sql` is migration version 3, name `engine_packages`; prior migration files remain unchanged.
 - `src-tauri/migrations/0004_prompt_library.sql` is migration version 4, name `prompt_library`; it adds profile timestamps, exact raw documents, duplicate provenance, and library indexes.
+- `src-tauri/migrations/0005_conversation_persistence.sql` is migration version 5, name `conversation_persistence`; it adds draft/job/usage/terminal fields, deterministic positions, recovery timestamps, and persistence indexes.
 - The runner creates `schema_migrations` defensively, checks each version, executes unapplied SQL in a transaction, then records the version and UTC timestamp.
-- Tests run all migrations twice and upgrade a simulated version-1 database, confirming four ledger rows, the model/package additions, and the prompt-library columns.
+- Tests run all migrations twice and upgrade a simulated version-1 database, confirming five ledger rows plus the model, package, prompt, and conversation-message additions.
 
 ### Foundation schema
 
@@ -251,8 +261,8 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 | `prompt_versions` | Immutable prompt content, hash, source, raw document, front matter, version, provenance | Active through `PromptRepository`/`PromptService` |
 | `models` | Local model identity, type, path, size, verification, GGUF metadata, file identity | Active through `ModelRepository`/`ModelService` |
 | `engine_packages` | Installed engine version/route/path, archive checksum, file inventory, state, errors, timestamps | Active through `EnginePackageRepository`/`EnginePackageService` |
-| `conversations` | Chat identity and selected model/prompt/settings | Schema only |
-| `messages` | Branchable conversation messages and token counts | Schema only |
+| `conversations` | Chat identity and selected model/prompt/settings | Active through `ConversationRepository`/`ConversationService` |
+| `messages` | Ordered parent-linked messages, drafts, usage, and terminal state | Active through `ConversationRepository`/`ConversationService` |
 | `downloads` | Resumable download state, byte counts, ETag, checksum, errors | Schema only |
 | `benchmarks` | Hardware/engine/model benchmark results | Schema only |
 | `outputs` | Generated file metadata and thumbnails | Schema only |
@@ -260,7 +270,7 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 
 Foreign keys connect prompt versions to profiles, conversations to models/prompt versions, and messages to conversations/parents. Deleting a conversation cascades to its messages. Unique constraints prevent duplicate model paths, duplicate prompt versions/hashes, and duplicate output paths.
 
-Indexes exist for prompt library ordering/version history, conversation recency, conversation messages, model kind, model verification state, unique non-null file identity, engine package state/route, download state/recency, output kind/recency, and benchmark lookup.
+Indexes exist for prompt library ordering/version history, pinned/updated conversation lists, deterministic conversation message order, unique non-null chat job IDs, model kind/verification/file identity, engine package state/route, download state/recency, output kind/recency, and benchmark lookup.
 
 ## Existing Tauri Commands
 
@@ -277,8 +287,13 @@ Indexes exist for prompt library ordering/version history, conversation recency,
 | `start_engine` | model ID with optional context/threads | `EngineRuntimeStatus` | Reverifies model/package/binary, launches the CPU server, and waits for owned ready state |
 | `stop_engine` | session ID | `EngineRuntimeStatus` | Stops only the matching retained owned session and returns its final state |
 | `get_engine_logs` | session ID | `EngineLogSnapshot` | Returns the process manager's bounded, redacted retained lines |
-| `start_chat_generation` | job/conversation/message/session IDs, bounded role/content messages, output limit | `ChatGenerationResult` | Requires the matching ready session, streams token batches, and returns completed/cancelled state plus usage |
+| `start_chat_generation` | job/conversation/user/assistant/session IDs, prompt version, bounded messages, output limit | `ChatGenerationResult` | Persists the bound turn/draft first, streams token batches, then finalizes exact text, usage, and terminal state |
 | `cancel_chat_generation` | job ID | boolean | Cancels only the matching active generation without stopping the loaded model |
+| `list_conversations` | query, limit, offset | `ConversationSummary[]` | Returns deterministic pinned/recent summaries without loading message bodies |
+| `get_conversation` | conversation ID | `ConversationDetail` | Lazily returns exact bindings/settings and ordered message content |
+| `rename_conversation` | conversation ID and title | `ConversationDetail` | Validates and updates a durable title |
+| `set_conversation_pinned` | conversation ID and pin state | `ConversationDetail` | Updates durable pinned ordering |
+| `delete_conversation` | conversation ID | none | Deletes the conversation and cascades only its messages |
 | `get_hardware_snapshot` | none | `HardwareSnapshot` | Returns cached hardware data or performs the first native probe |
 | `refresh_hardware` | none | `HardwareSnapshot` | Forces `sysinfo`, NVIDIA, and Windows NPU probes and replaces the cache |
 | `get_settings` | none | `AppSettings` | Returns the in-memory settings loaded from SQLite/defaults |
@@ -325,7 +340,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 5 Vitest files, 14 tests for adaptive byte formatting, model metadata, selector grouping/readiness, exact/approximate context metrics including selected prompt estimates, immutable prompt restoration, and system-message ordering.
-- Rust: 38 passing default tests plus two ignored opt-in integration tests. Coverage includes eight prompt parser/service tests for exact-content handling, malformed/unsafe YAML rejection, metadata bounds, deterministic hashes, immutable versions, stale edits, duplicate provenance, soft deletion, historical reads, exports, and compilation, alongside the chat, hardware, database, GGUF, model, process, and package suites.
+- Rust: 42 passing default tests plus two ignored opt-in integration tests. Conversation coverage includes transactional turn ordering, terminal usage/content finalization, restart interruption recovery, binding-conflict rollback, deterministic search/list metadata, pin/rename, foreign keys, and cascade deletion, alongside the prompt, chat, hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
 
@@ -339,7 +354,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 30,440,960 bytes, rebuilt on 2026-07-15 after the Prompt Library UI and Chat binding update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 30,736,896 bytes, rebuilt on 2026-07-15 after the conversation-persistence backend update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
@@ -354,7 +369,7 @@ Checkpoint size: 30,440,960 bytes, rebuilt on 2026-07-15 after the Prompt Librar
 - The current pinned llama.cpp server exposes no dedicated process-shutdown endpoint used by this adapter, so stop applies a 250 ms grace interval and then force-stops only the owned handle. Crash recovery/restart policy is not implemented.
 - The scheduler is a resource classification scaffold, not a queue or durable job runner. `activeJobs` currently reflects only the active llama.cpp generation.
 - Model scan, engine lifecycle/log, and chat token/usage/state events are sequenced and consumed. Early model-loading state is polled while `start_engine` awaits readiness; download events, general throttling, and broader stale-sequence handling remain unfinished.
-- Settings, models, and engine packages have repository/service implementations. Prompt, conversation/message, general download, output, benchmark, and job repositories remain unfinished.
+- Settings, models, engine packages, prompts, and conversations/messages have repository/service implementations. General download, output, benchmark, and job repositories remain unfinished.
 - The first-run flag is fixed false; setup flow and completion persistence are not implemented.
 - The optional local API is only a setting. No server is started, and LAN access is not exposed in the UI.
 - Frontend async initialization/settings updates have minimal error handling and no global error boundary.
@@ -368,8 +383,8 @@ Checkpoint size: 30,440,960 bytes, rebuilt on 2026-07-15 after the Prompt Librar
 - A redistributable tensor-bearing GGUF fixture for normal CI, graceful protocol-level request draining, conservative OOM fallback, and crash recovery. The environment-selected real-model load/stream/stop test is opt-in and passed locally.
 - Advanced model selector compatibility/fit estimates, disabled-state explanations, load estimates, and Rust-persisted preference. Basic library-backed selection and runtime control are implemented.
 - Markdown/text system-prompt import, YAML front matter, hashing, immutable versions, editing, searching, and selector binding.
-- Durable streaming chat persistence, retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and crash recovery. Basic streaming, token/state/usage events, generation stop, ephemeral messages, and live context visibility are implemented.
-- Conversation/message repositories, history list, branches, titles, pinning, export, and crash-safe partial responses.
+- Chat history/restoration UI, retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and engine crash recovery. Durable linear turn storage, startup interruption recovery, streaming, stop, and live context visibility are implemented.
+- Conversation branches, retry/export commands, incremental draft checkpoints during very long generations, and the history UI. Repository-backed list/open/rename/pin/delete and final partial-response persistence are implemented.
 - Signed model catalog, catalog refresh, recommendations, resumable downloads, verification, pause/retry, and installation.
 - Image generation, speech recognition, text-to-speech, gallery, downloads, and logs are visual empty states only.
 - OpenVINO, Vulkan, stable-diffusion.cpp, whisper.cpp, and Kokoro runtime adapters.
