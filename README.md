@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, bounded metadata inspection, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, loopback health/identity checks, the Chat model selector, bounded streaming generation/cancellation, usage events, live loaded-context visibility, and retained logs are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Prompt persistence, durable conversation history, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, bounded metadata inspection, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, loopback health/identity checks, the Chat model selector, bounded streaming generation/cancellation, usage events, live context telemetry, navigation-safe ephemeral chat state, and retained logs are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Prompt persistence, durable conversation history, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -49,6 +49,36 @@ npm.cmd run tauri -- dev
 ```
 
 Tauri starts Vite on `http://localhost:1420` and opens the native NeuraLoc-Core window. Port 1420 is configured as strict, so stop another process using it before launching development mode.
+
+## First Local Model Test
+
+The current prototype runs GGUF models locally through the verified llama.cpp CPU runtime. The model catalog and Downloads workflow are not enabled yet, so the first model file must be obtained separately as a `.gguf` file and imported into the local library. The llama.cpp runtime package can be installed or imported from Model Manager.
+
+1. Start the desktop app with `npm.cmd run tauri -- dev`.
+2. Open `Model Manager` from the left navigation.
+3. In the runtime section, install or import the pinned `llama.cpp CPU runtime`, then click `Verify` until it reports `Ready`. Online installation requires Internet access to be enabled in Settings; offline package import is supported when you already have the approved archive.
+4. Click `Import GGUF` and choose a model file, or use `Scan folder` for a directory containing GGUF files.
+5. Wait for the model row to show `Ready`. If the model is listed as missing or invalid, use `Verify` after confirming that the file still exists and is a regular `.gguf` file.
+6. Open `Chat`, choose the ready model in the `Model` selector, and wait for `Ready on CPU`. Selecting a ready model loads it into the owned local runtime.
+7. Send a small first prompt such as:
+
+   ```text
+   Hello. Confirm that you are running locally in one short sentence.
+   ```
+
+8. Read the response. The usage line now appears at the bottom of the assistant message and reports output tokens, prompt tokens, and measured speed. The compact strip above the composer shows context usage, context capacity, output progress, generation state, speed, and the active CPU/backend route.
+9. To test cancellation, send a longer prompt and press the square `Stop generation` button while the model is responding. The partial turn should end as stopped and the app should return to an idle/ready state.
+10. When finished, use the square button in the Chat header to unload the model. The runtime remains owned by NeuraLoc-Core and is stopped without killing unrelated processes.
+
+The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.cpp `b9986` Windows x64 CPU build. On a CPU-only route, high CPU utilization during generation is expected. The first response can also take longer while the model is loading into memory.
+
+### First-Test Troubleshooting
+
+- If an imported model does not appear in Chat, return to Model Manager and confirm that its verification state is `Ready`, then reopen Chat so it refreshes the model library.
+- If Chat says `No model selected`, choose the model from the selector rather than typing into the composer. The composer stays disabled until the matching runtime session is ready.
+- If a response is still generating, use the visible stop button. Open `Logs` or the runtime log section in Model Manager if the process reports an error.
+- If the context strip shows a `~` prefix during generation, the number is an explicitly approximate live estimate. Final llama.cpp usage replaces it after the response completes.
+- Current chat turns are retained in the mounted workspace while navigating, but conversation history is still ephemeral and is not restored after an application restart.
 
 ## Browser UI Preview
 
