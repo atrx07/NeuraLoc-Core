@@ -4,7 +4,7 @@
 
 System prompts are first-class, versioned documents. NeuraLoc-Core preserves imported text, makes every composed layer visible, and binds conversations to immutable prompt versions.
 
-Implementation status (2026-07-15): secure import/versioning, the management workspace, adjacent Chat selection, exact selected-version compilation, explicit prompt-change/new-conversation confirmation, and system-role submission are implemented. New native conversations persist the exact selected prompt-version reference in SQLite before generation. History restoration plus application tool-policy, project, memory, metadata-precedence, and full layer-inspector flows remain planned.
+Implementation status (2026-07-15): secure import/versioning, the management workspace, adjacent Chat selection, exact selected-version compilation, explicit prompt-change/new-conversation confirmation, and system-role submission are implemented. Native conversations persist and restore the exact selected prompt-version reference through the lazy history UI. Application tool-policy, project, memory, metadata-precedence, and full layer-inspector flows remain planned.
 
 ## Import format
 

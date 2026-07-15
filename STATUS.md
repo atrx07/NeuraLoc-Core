@@ -10,7 +10,7 @@ Current version: `0.1.0`
 
 NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, bounded chat generation, and immutable system prompts, and renders a polished desktop shell with functional Chat, Prompt Library, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
 
-This checkpoint has a durable Rust conversation backend with an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. The current Chat UI still shows only its mounted conversation and cannot browse or restore those records yet. A local opt-in Qwen3 4B integration passed on 2026-07-14. Multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
+This checkpoint has durable linear local chat with an optional immutable system-prompt version, but it is not yet a complete local inference product. Native turns are stored before inference and finalized with exact streamed text, usage, and terminal state; startup identifies abandoned drafts. The searchable Chat rail lazily opens messages, restores the last conversation and exact bindings after restart, and supports rename, pin, and cascade delete. A local opt-in Qwen3 4B integration passed on 2026-07-14. Branch/retry/export, multi-layer prompt composition, enforced context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -25,9 +25,9 @@ This checkpoint has a durable Rust conversation backend with an optional immutab
 - Functional Model Manager with native GGUF file import, recursive folder scanning, cancellation/progress, search, metadata/status rows, reverify, metadata-only removal, llama.cpp package controls, per-model load/stop controls, runtime health, lifecycle state, and retained-log inspection.
 - Functional Prompt Library with native Markdown/text import, search, pinned-first summaries, exact source inspection, local creation, immutable version editing, duplicate provenance, pin/unpin, original/normalized export, and soft deletion.
 - Functional Chat model selector backed by the persisted model library, grouped ready/unavailable choices, last-used preference, runtime reuse/load/switch/unload controls, visible lifecycle state, and a composer gate tied to the selected ready session.
-- Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, and usage telemetry. The adjacent prompt selector binds an immutable version and sends its exact content as the first system role. Native generation now transactionally persists the user message and assistant draft before inference, then finalizes the exact streamed response, usage, token count, and terminal reason. The mounted UI still retains only the active renderer view; history browsing/restoration is the next slice.
+- Chat messages with Rust-owned streaming token batches, stop generation, terminal/error states, and usage telemetry. Native generation transactionally persists the user message and assistant draft before inference, then finalizes the exact streamed response, usage, token count, and terminal reason. The history rail searches summary metadata, loads one conversation body on demand, restores model/prompt bindings and the last opened conversation, exposes inline rename/pin/delete actions, and becomes an overlay drawer at the 900px breakpoint. Interrupted drafts render explicitly instead of disappearing.
 - Catalog and Downloads tabs remain visibly disabled until the verified catalog checkpoint.
-- Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, a read-only sample prompt exercises library/selector layouts, and native mutations are unavailable.
+- Browser-only demo bridge for UI development when Tauri IPC is unavailable. Demo settings persist only for the current page session, hardware values are representative, read-only sample prompt/conversation records exercise library/history/restoration layouts, and native mutations are unavailable.
 - Typed frontend domain interfaces for app snapshots, settings, hardware, local models, GGUF metadata, engine packages, runtime lifecycle/health/logs, chat requests/results/usage/events, scan/engine events, navigation, and IPC errors.
 - Shared adaptive binary-byte and model-metadata formatters with frontend unit tests.
 
@@ -125,6 +125,8 @@ NeuraLoc-Core/
 |   |   |   |-- ChatWorkspace.tsx
 |   |   |   |-- chat-metrics.test.ts
 |   |   |   |-- chat-metrics.ts
+|   |   |   |-- conversation-history.test.ts
+|   |   |   |-- conversation-history.ts
 |   |   |   |-- model-selection.ts
 |   |   |   |-- model-selection.test.ts
 |   |   |   |-- prompt-selection.ts
@@ -291,8 +293,8 @@ Indexes exist for prompt library ordering/version history, pinned/updated conver
 | `cancel_chat_generation` | job ID | boolean | Cancels only the matching active generation without stopping the loaded model |
 | `list_conversations` | query, limit, offset | `ConversationSummary[]` | Returns deterministic pinned/recent summaries without loading message bodies |
 | `get_conversation` | conversation ID | `ConversationDetail` | Lazily returns exact bindings/settings and ordered message content |
-| `rename_conversation` | conversation ID and title | `ConversationDetail` | Validates and updates a durable title |
-| `set_conversation_pinned` | conversation ID and pin state | `ConversationDetail` | Updates durable pinned ordering |
+| `rename_conversation` | conversation ID and title | none | Validates and updates a durable title without loading messages |
+| `set_conversation_pinned` | conversation ID and pin state | none | Updates durable pinned ordering without loading messages |
 | `delete_conversation` | conversation ID | none | Deletes the conversation and cascades only its messages |
 | `get_hardware_snapshot` | none | `HardwareSnapshot` | Returns cached hardware data or performs the first native probe |
 | `refresh_hardware` | none | `HardwareSnapshot` | Forces `sysinfo`, NVIDIA, and Windows NPU probes and replaces the cache |
@@ -339,7 +341,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 
 Current automated tests:
 
-- Frontend: 5 Vitest files, 14 tests for adaptive byte formatting, model metadata, selector grouping/readiness, exact/approximate context metrics including selected prompt estimates, immutable prompt restoration, and system-message ordering.
+- Frontend: 6 Vitest files, 17 tests for adaptive byte formatting, model metadata, selector grouping/readiness, exact/approximate context metrics, immutable prompt/conversation restoration, persisted state mapping/order, inference-history filtering, and system-message ordering.
 - Rust: 42 passing default tests plus two ignored opt-in integration tests. Conversation coverage includes transactional turn ordering, terminal usage/content finalization, restart interruption recovery, binding-conflict rollback, deterministic search/list metadata, pin/rename, foreign keys, and cascade deletion, alongside the prompt, chat, hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
@@ -354,7 +356,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 30,736,896 bytes, rebuilt on 2026-07-15 after the conversation-persistence backend update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 30,740,992 bytes, rebuilt on 2026-07-15 after the durable history workspace update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
@@ -382,9 +384,9 @@ Checkpoint size: 30,736,896 bytes, rebuilt on 2026-07-15 after the conversation-
 - Advanced GGUF compatibility normalization, RAM/VRAM estimates, projector pairing, hostile-format corpus coverage, and installed-engine validation.
 - A redistributable tensor-bearing GGUF fixture for normal CI, graceful protocol-level request draining, conservative OOM fallback, and crash recovery. The environment-selected real-model load/stream/stop test is opt-in and passed locally.
 - Advanced model selector compatibility/fit estimates, disabled-state explanations, load estimates, and Rust-persisted preference. Basic library-backed selection and runtime control are implemented.
-- Markdown/text system-prompt import, YAML front matter, hashing, immutable versions, editing, searching, and selector binding.
-- Chat history/restoration UI, retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and engine crash recovery. Durable linear turn storage, startup interruption recovery, streaming, stop, and live context visibility are implemented.
-- Conversation branches, retry/export commands, incremental draft checkpoints during very long generations, and the history UI. Repository-backed list/open/rename/pin/delete and final partial-response persistence are implemented.
+- Multi-layer prompt composition for tool policy, project instructions, memory, and the compiled-layer inspector. Markdown/text system-prompt import, versioning, editing, search, selector binding, and durable restoration are implemented.
+- Retry, enforced context budgeting/strategies, model-template options, Markdown rendering, reasoning presentation, and engine crash recovery. Durable linear storage/history/restoration, startup interruption recovery, streaming, stop, and live context visibility are implemented.
+- Conversation branches, retry/export commands, incremental draft checkpoints during very long generations, and pagination beyond the first 50 history summaries. Repository-backed search/list/open/rename/pin/delete and final partial-response persistence are implemented.
 - Signed model catalog, catalog refresh, recommendations, resumable downloads, verification, pause/retry, and installation.
 - Image generation, speech recognition, text-to-speech, gallery, downloads, and logs are visual empty states only.
 - OpenVINO, Vulkan, stable-diffusion.cpp, whisper.cpp, and Kokoro runtime adapters.

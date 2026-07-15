@@ -32,7 +32,7 @@ pub fn get_conversation(
 pub fn rename_conversation(
     state: State<'_, AppState>,
     request: RenameConversationRequest,
-) -> Result<ConversationDetail, IpcError> {
+) -> Result<(), IpcError> {
     state.conversations.rename(request).map_err(Into::into)
 }
 
@@ -40,7 +40,7 @@ pub fn rename_conversation(
 pub fn set_conversation_pinned(
     state: State<'_, AppState>,
     request: SetConversationPinnedRequest,
-) -> Result<ConversationDetail, IpcError> {
+) -> Result<(), IpcError> {
     state.conversations.set_pinned(request).map_err(Into::into)
 }
 

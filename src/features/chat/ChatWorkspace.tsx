@@ -4,17 +4,23 @@ import {
   AlertTriangle,
   ArrowUp,
   Bot,
+  Check,
   Cpu,
   Download,
   FileText,
   Gauge,
   ImagePlus,
   LoaderCircle,
+  PanelLeft,
+  Pencil,
+  Pin,
+  PinOff,
   Plus,
   Search,
   SlidersHorizontal,
   Sparkles,
   Square,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -22,14 +28,20 @@ import { bridge } from "../../services/bridge";
 import { useAppStore } from "../../stores/app-store";
 import type {
   ChatGenerationState,
-  ChatMessageInput,
-  ChatUsage,
   CompiledPrompt,
+  ConversationSummary,
   EngineRuntimeStatus,
   ModelRecord,
   PromptSummary,
 } from "../../types/domain";
 import { calculateChatMetrics } from "./chat-metrics";
+import {
+  generationHistory,
+  localMessagesFromConversation,
+  rememberedConversation,
+  type LocalMessage,
+  type LocalMessageState,
+} from "./conversation-history";
 import {
   chatModelLabel,
   groupChatModels,
@@ -40,20 +52,10 @@ import { chatMessagesWithSystemPrompt, rememberedPrompt } from "./prompt-selecti
 
 const LAST_MODEL_KEY = "neuraloc.lastModelId";
 const LAST_PROMPT_KEY = "neuraloc.lastPromptVersionId";
+const LAST_CONVERSATION_KEY = "neuraloc.lastConversationId";
 const AUTO_SCROLL_THRESHOLD_PX = 48;
 
-type MessageState = "pending" | "streaming" | "complete" | "cancelled" | "error";
-
-interface LocalMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  state: MessageState;
-  usage: ChatUsage | null;
-}
-
 interface PromptBinding extends CompiledPrompt {
-  profileId: string;
   stableName: string;
   version: number;
 }
@@ -63,16 +65,22 @@ export function ChatWorkspace() {
   const setActiveView = useAppStore((state) => state.setActiveView);
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [conversationSearch, setConversationSearch] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState<EngineRuntimeStatus | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedPrompt, setSelectedPrompt] = useState<PromptBinding | null>(null);
   const [modelOperation, setModelOperation] = useState<"load" | "stop" | null>(null);
-  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [conversationId, setConversationId] = useState<string>(() => crypto.randomUUID());
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState("");
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const tokenSequences = useRef(new Map<string, number>());
   const stateSequences = useRef(new Map<string, number>());
   const usageSequences = useRef(new Map<string, number>());
@@ -83,14 +91,36 @@ export function ChatWorkspace() {
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
     try {
-      const [availableModels, status, availablePrompts] = await Promise.all([
+      const [availableModels, status, availablePrompts, savedConversations] = await Promise.all([
         bridge.listModels(),
         bridge.getEngineStatus(),
         bridge.listPrompts(),
+        bridge.listConversations(),
       ]);
       setModels(availableModels);
       setPrompts(availablePrompts);
+      setConversations(savedConversations);
+      setHistoryLoading(false);
       setRuntimeStatus(status);
+      const savedConversation = rememberedConversation(savedConversations, readLastConversationId());
+      if (savedConversation) {
+        const detail = await bridge.getConversation(savedConversation.id);
+        setConversationId(detail.conversation.id);
+        setMessages(localMessagesFromConversation(detail.messages));
+        setSelectedModelId(detail.conversation.modelId);
+        writeLastModelId(detail.conversation.modelId);
+        const restoredPrompt = detail.conversation.promptVersionId
+          ? await compilePromptVersion(
+              detail.conversation.promptVersionId,
+              detail.conversation.promptName ?? "Saved prompt",
+              detail.conversation.promptVersion ?? 1,
+            )
+          : null;
+        setSelectedPrompt(restoredPrompt);
+        writeLastPromptId(restoredPrompt?.versionId ?? null);
+        return;
+      }
+      writeLastConversationId(null);
       const activeModel = status.modelId && isEngineActive(status)
         && availableModels.some((model) => model.id === status.modelId && model.verificationState === "ready")
         ? status.modelId
@@ -110,9 +140,25 @@ export function ChatWorkspace() {
     }
   }, []);
 
+  const refreshConversations = useCallback(async (query: string) => {
+    setHistoryLoading(true);
+    try {
+      setConversations(await bridge.listConversations(query));
+    } catch (caught) {
+      setError(errorMessage(caught, "Conversation history could not be refreshed."));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void refreshConversations(conversationSearch), 180);
+    return () => window.clearTimeout(timer);
+  }, [conversationSearch, refreshConversations]);
 
   useEffect(() => {
     const previous = previousView.current;
@@ -186,6 +232,7 @@ export function ChatWorkspace() {
 
   const groups = useMemo(() => groupChatModels(models), [models]);
   const selectedModel = models.find((model) => model.id === selectedModelId) ?? null;
+  const activeConversation = conversations.find((conversation) => conversation.id === conversationId) ?? null;
   const modelReady = isSelectedModelReady(selectedModelId, runtimeStatus);
   const generating = activeJobId !== null;
   const runtimeAvailable = runtimeStatus?.lifecycle !== "notInstalled";
@@ -198,6 +245,90 @@ export function ChatWorkspace() {
     ),
     [messages, runtimeActive, runtimeStatus?.contextSize, selectedPrompt?.estimatedTokens],
   );
+
+  async function openConversation(summary: ConversationSummary) {
+    if (activeJobId) return;
+    if (summary.id === conversationId) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const detail = await bridge.getConversation(summary.id);
+      const restoredPrompt = detail.conversation.promptVersionId
+        ? await compilePromptVersion(
+            detail.conversation.promptVersionId,
+            detail.conversation.promptName ?? "Saved prompt",
+            detail.conversation.promptVersion ?? 1,
+          )
+        : null;
+      setConversationId(detail.conversation.id);
+      setMessages(localMessagesFromConversation(detail.messages));
+      setSelectedModelId(detail.conversation.modelId);
+      setSelectedPrompt(restoredPrompt);
+      setInput("");
+      setRenamingConversationId(null);
+      autoScrollToBottom.current = true;
+      writeLastConversationId(detail.conversation.id);
+      writeLastModelId(detail.conversation.modelId);
+      writeLastPromptId(restoredPrompt?.versionId ?? null);
+      setHistoryOpen(false);
+    } catch (caught) {
+      setError(errorMessage(caught, `${summary.title} could not be opened.`));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function beginRenameConversation(summary: ConversationSummary) {
+    setRenamingConversationId(summary.id);
+    setRenameValue(summary.title);
+  }
+
+  async function saveConversationTitle(summary: ConversationSummary) {
+    const title = renameValue.trim();
+    if (!title || title === summary.title) {
+      setRenamingConversationId(null);
+      return;
+    }
+    setError(null);
+    try {
+      await bridge.renameConversation(summary.id, title);
+      setRenamingConversationId(null);
+      await refreshConversations(conversationSearch);
+    } catch (caught) {
+      setError(errorMessage(caught, "The conversation title could not be updated."));
+    }
+  }
+
+  async function toggleConversationPinned(summary: ConversationSummary) {
+    setError(null);
+    try {
+      await bridge.setConversationPinned(summary.id, !summary.pinned);
+      await refreshConversations(conversationSearch);
+    } catch (caught) {
+      setError(errorMessage(caught, "The conversation pin could not be updated."));
+    }
+  }
+
+  async function deleteConversation(summary: ConversationSummary) {
+    if (!(await bridge.confirmDeleteConversation(summary.title))) return;
+    setError(null);
+    try {
+      await bridge.deleteConversation(summary.id);
+      if (summary.id === conversationId) {
+        setConversationId(crypto.randomUUID());
+        setMessages([]);
+        setInput("");
+        writeLastConversationId(null);
+      }
+      setRenamingConversationId(null);
+      await refreshConversations(conversationSearch);
+    } catch (caught) {
+      setError(errorMessage(caught, "The conversation could not be deleted."));
+    }
+  }
 
   async function selectModel(value: string) {
     if (value === "manage") {
@@ -298,6 +429,7 @@ export function ChatWorkspace() {
       content,
       state: "complete",
       usage: null,
+      terminalReason: null,
     };
     const assistantMessage: LocalMessage = {
       id: assistantMessageId,
@@ -305,16 +437,15 @@ export function ChatWorkspace() {
       content: "",
       state: "pending",
       usage: null,
+      terminalReason: null,
     };
-    const history: ChatMessageInput[] = messages
-      .filter((message) => message.role === "user" || message.state === "complete")
-      .filter((message) => message.content.length > 0)
-      .map((message) => ({ role: message.role, content: message.content }));
+    const history = generationHistory(messages);
     const requestMessages = chatMessagesWithSystemPrompt(selectedPrompt?.content ?? null, history, content);
     autoScrollToBottom.current = true;
     setMessages((current) => [...current, userMessage, assistantMessage]);
     setInput("");
     setActiveJobId(jobId);
+    writeLastConversationId(conversationId);
     tokenSequences.current.delete(jobId);
     stateSequences.current.delete(jobId);
     usageSequences.current.delete(jobId);
@@ -344,6 +475,7 @@ export function ChatWorkspace() {
     } finally {
       setActiveJobId(null);
       void bridge.getEngineStatus().then(setRuntimeStatus).catch(() => undefined);
+      void refreshConversations(conversationSearch);
     }
   }
 
@@ -363,6 +495,9 @@ export function ChatWorkspace() {
     setMessages([]);
     setInput("");
     setError(null);
+    setRenamingConversationId(null);
+    writeLastConversationId(null);
+    setHistoryOpen(false);
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -387,17 +522,53 @@ export function ChatWorkspace() {
       : "Select and load a model to begin";
 
   return <div className="chat-layout">
-    <aside className="conversation-rail">
+    <aside className={`conversation-rail ${historyOpen ? "open" : ""}`}>
       <button className="new-chat-button" onClick={() => void newConversation()} type="button"><Plus size={17} /> New conversation</button>
-      <div className="rail-search"><Search size={15} /><input aria-label="Search conversations" disabled placeholder="Search conversations" /></div>
+      <div className="rail-search"><Search size={15} /><input aria-label="Search conversations" onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search conversations" value={conversationSearch} /></div>
       <div className="conversation-list">
-        {messages.length > 0
-          ? <button className="conversation-item active" type="button"><span>Current conversation</span><small>{selectedModel?.displayName ?? "Local chat"}{selectedPrompt ? ` / ${selectedPrompt.stableName} v${selectedPrompt.version}` : ""}</small></button>
-          : <div className="conversation-empty">No conversations yet</div>}
+        {messages.length > 0 && !activeConversation && !conversationSearch && <div className="conversation-entry active transient">
+          <button className="conversation-item active" type="button"><span>Current conversation</span><small>{selectedModel?.displayName ?? "Local chat"}{selectedPrompt ? ` / ${selectedPrompt.stableName} v${selectedPrompt.version}` : ""}</small></button>
+        </div>}
+        {conversations.map((summary) => <div className={`conversation-entry ${summary.id === conversationId ? "active" : ""}`} key={summary.id}>
+          {renamingConversationId === summary.id
+            ? <div className="conversation-rename">
+                <input
+                  aria-label="Conversation title"
+                  autoFocus
+                  maxLength={120}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void saveConversationTitle(summary);
+                    if (event.key === "Escape") setRenamingConversationId(null);
+                  }}
+                  value={renameValue}
+                />
+                <button aria-label="Save title" className="conversation-action" disabled={!renameValue.trim()} onClick={() => void saveConversationTitle(summary)} title="Save title" type="button"><Check size={13} /></button>
+                <button aria-label="Cancel rename" className="conversation-action" onClick={() => setRenamingConversationId(null)} title="Cancel rename" type="button"><X size={13} /></button>
+              </div>
+            : <>
+                <button className={`conversation-item ${summary.id === conversationId ? "active" : ""}`} disabled={generating} onClick={() => void openConversation(summary)} type="button">
+                  <span>{summary.title}</span>
+                  <small>{summary.modelName} / {summary.messageCount.toLocaleString()} messages</small>
+                </button>
+                <div className="conversation-actions">
+                  <button aria-label={summary.pinned ? "Unpin conversation" : "Pin conversation"} className="conversation-action" disabled={generating && summary.id === conversationId} onClick={() => void toggleConversationPinned(summary)} title={summary.pinned ? "Unpin conversation" : "Pin conversation"} type="button">{summary.pinned ? <PinOff size={13} /> : <Pin size={13} />}</button>
+                  <button aria-label="Rename conversation" className="conversation-action" disabled={generating && summary.id === conversationId} onClick={() => beginRenameConversation(summary)} title="Rename conversation" type="button"><Pencil size={13} /></button>
+                  <button aria-label="Delete conversation" className="conversation-action danger" disabled={generating && summary.id === conversationId} onClick={() => void deleteConversation(summary)} title="Delete conversation" type="button"><Trash2 size={13} /></button>
+                </div>
+              </>}
+        </div>)}
+        {historyLoading && conversations.length === 0
+          ? <div className="conversation-empty"><LoaderCircle className="spin" size={15} /> Loading history</div>
+          : !historyLoading && conversations.length === 0 && messages.length === 0
+            ? <div className="conversation-empty">{conversationSearch ? "No matching conversations" : "No conversations yet"}</div>
+            : null}
       </div>
     </aside>
+    {historyOpen && <button aria-label="Close conversation history" className="conversation-backdrop" onClick={() => setHistoryOpen(false)} type="button" />}
     <div className="chat-workspace">
       <div className="chat-controls">
+        <button aria-label="Conversation history" className="icon-button history-toggle" onClick={() => setHistoryOpen((current) => !current)} title="Conversation history" type="button"><PanelLeft size={17} /></button>
         <label>Model<select
           aria-label="Chat model"
           disabled={loading || modelOperation !== null || generating}
@@ -405,6 +576,8 @@ export function ChatWorkspace() {
           value={selectedModelId ?? "none"}
         >
           <option value="none">No model selected</option>
+          {selectedModelId && !models.some((model) => model.id === selectedModelId)
+            && <option disabled value={selectedModelId}>{activeConversation?.modelName ?? "Saved model"} - unavailable</option>}
           {groups.ready.length > 0 && <optgroup label={runtimeAvailable ? "Ready" : "Missing backend"}>
             {groups.ready.map((model) => <option disabled={!runtimeAvailable} key={model.id} value={model.id}>{chatModelLabel(model)}</option>)}
           </optgroup>}
@@ -454,13 +627,15 @@ export function ChatWorkspace() {
         {messages.map((message) => <article className={`chat-message ${message.role}`} key={message.id}>
           <div className="message-avatar">{message.role === "user" ? <User size={15} /> : <Bot size={15} />}</div>
           <div className="message-body">
-            <header><strong>{message.role === "user" ? "You" : selectedModel?.displayName ?? "Assistant"}</strong></header>
+            <header><strong>{message.role === "user" ? "You" : selectedModel?.displayName ?? activeConversation?.modelName ?? "Assistant"}</strong></header>
             {message.content
               ? <div className="message-content">{message.content}</div>
               : message.state === "complete"
                 ? <div className="message-terminal error">No response text was returned</div>
                 : message.state === "cancelled"
                   ? <div className="message-terminal">Generation stopped</div>
+                  : message.state === "interrupted"
+                    ? <div className="message-terminal error">Generation was interrupted before the app closed</div>
                   : message.state === "error"
                   ? <div className="message-terminal error">Generation failed</div>
                   : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
@@ -533,8 +708,8 @@ function chatStatus(status: EngineRuntimeStatus | null, model: ModelRecord | nul
   }[status.lifecycle];
 }
 
-function messageState(state: ChatGenerationState): MessageState {
-  const states: Record<ChatGenerationState, MessageState> = {
+function messageState(state: ChatGenerationState): LocalMessageState {
+  const states: Record<ChatGenerationState, LocalMessageState> = {
     started: "streaming",
     completed: "complete",
     cancelled: "cancelled",
@@ -566,16 +741,36 @@ function writeLastModelId(modelId: string | null) {
 }
 
 async function compilePromptBinding(prompt: PromptSummary): Promise<PromptBinding> {
-  const compiled = await bridge.compilePrompt(prompt.latestVersionId);
+  return compilePromptVersion(prompt.latestVersionId, prompt.stableName, prompt.latestVersion);
+}
+
+async function compilePromptVersion(versionId: string, stableName: string, version: number): Promise<PromptBinding> {
+  const compiled = await bridge.compilePrompt(versionId);
   if (new Blob([compiled.content]).size > 256 * 1024) {
     throw new Error("This prompt exceeds the current 256 KiB chat system-message limit.");
   }
   return {
     ...compiled,
-    profileId: prompt.profileId,
-    stableName: prompt.stableName,
-    version: prompt.latestVersion,
+    stableName,
+    version,
   };
+}
+
+function readLastConversationId(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_CONVERSATION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastConversationId(conversationId: string | null) {
+  try {
+    if (conversationId) window.localStorage.setItem(LAST_CONVERSATION_KEY, conversationId);
+    else window.localStorage.removeItem(LAST_CONVERSATION_KEY);
+  } catch {
+    // A blocked renderer storage preference must not affect durable conversation storage.
+  }
 }
 
 function readLastPromptId(): string | null {

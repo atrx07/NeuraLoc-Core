@@ -21,6 +21,8 @@ import type {
   ModelScanProgress,
   ModelScanSummary,
   CompiledPrompt,
+  ConversationDetail,
+  ConversationSummary,
   PromptExport,
   PromptExportMode,
   PromptMutationOutcome,
@@ -258,6 +260,57 @@ export const bridge = {
     if (!isTauri()) return () => undefined;
     return listen<EventEnvelope<EngineLogBatch>>("engine://log-line", (event) => {
       callback(event.payload.payload);
+    });
+  },
+
+  async listConversations(query = "", limit = 50, offset = 0): Promise<ConversationSummary[]> {
+    if (!isTauri()) {
+      const conversation = demoConversationSummary();
+      const needle = query.trim().toLocaleLowerCase();
+      const matches = !needle || [conversation.title, conversation.modelName, conversation.promptName]
+        .some((value) => value?.toLocaleLowerCase().includes(needle));
+      return matches && offset === 0 && limit > 0 ? [conversation] : [];
+    }
+    return invoke<ConversationSummary[]>("list_conversations", {
+      request: { query: query || null, limit, offset },
+    });
+  },
+
+  async getConversation(conversationId: string): Promise<ConversationDetail> {
+    if (!isTauri()) {
+      if (conversationId === demoConversationSummary().id) return demoConversationDetail();
+      throw new Error("The demo conversation was not found.");
+    }
+    return invoke<ConversationDetail>("get_conversation", { request: { conversationId } });
+  },
+
+  async renameConversation(conversationId: string, title: string): Promise<void> {
+    if (!isTauri()) throw new Error("Conversation editing is available in the desktop app.");
+    return invoke<void>("rename_conversation", {
+      request: { conversationId, title },
+    });
+  },
+
+  async setConversationPinned(conversationId: string, pinned: boolean): Promise<void> {
+    if (!isTauri()) throw new Error("Conversation pinning is available in the desktop app.");
+    return invoke<void>("set_conversation_pinned", {
+      request: { conversationId, pinned },
+    });
+  },
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    if (!isTauri()) throw new Error("Conversation deletion is available in the desktop app.");
+    return invoke<void>("delete_conversation", { request: { conversationId } });
+  },
+
+  async confirmDeleteConversation(title: string): Promise<boolean> {
+    const message = `Delete ${title} and all of its messages from local history?`;
+    if (!isTauri()) return window.confirm(message);
+    return confirm(message, {
+      title: "Delete conversation",
+      kind: "warning",
+      okLabel: "Delete",
+      cancelLabel: "Keep",
     });
   },
 
@@ -508,5 +561,65 @@ function demoPromptVersion(): PromptVersionRecord {
     sourceProfileId: null,
     sourceVersionId: null,
     createdAt: "2026-07-15T09:00:00Z",
+  };
+}
+
+function demoConversationSummary(): ConversationSummary {
+  return {
+    id: "demo-conversation-1",
+    title: "Review the persistence design",
+    modelId: "demo-model-1",
+    modelName: "Qwen3 4B",
+    promptVersionId: "demo-prompt-version-2",
+    promptName: "Local code reviewer",
+    promptVersion: 2,
+    contextStrategy: "full_history",
+    pinned: true,
+    messageCount: 2,
+    createdAt: "2026-07-15T09:00:00Z",
+    updatedAt: "2026-07-15T09:01:00Z",
+  };
+}
+
+function demoConversationDetail(): ConversationDetail {
+  const summary = demoConversationSummary();
+  const { messageCount: _messageCount, ...conversation } = summary;
+  return {
+    conversation: {
+      ...conversation,
+      generationSettings: { maxOutputTokens: 1024 },
+    },
+    messages: [
+      {
+        id: "demo-user-message",
+        conversationId: summary.id,
+        parentId: null,
+        role: "user",
+        content: "Review the conversation persistence design.",
+        state: "complete",
+        jobId: null,
+        tokenCount: null,
+        usage: null,
+        terminalReason: null,
+        position: 1,
+        createdAt: summary.createdAt,
+        updatedAt: summary.createdAt,
+      },
+      {
+        id: "demo-assistant-message",
+        conversationId: summary.id,
+        parentId: "demo-user-message",
+        role: "assistant",
+        content: "The turn is persisted before inference and finalized after streaming completes.",
+        state: "complete",
+        jobId: "demo-job",
+        tokenCount: 14,
+        usage: { promptTokens: 32, outputTokens: 14, tokensPerSecond: 18.4 },
+        terminalReason: "completed",
+        position: 2,
+        createdAt: summary.updatedAt,
+        updatedAt: summary.updatedAt,
+      },
+    ],
   };
 }

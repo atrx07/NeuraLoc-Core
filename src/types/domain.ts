@@ -293,6 +293,49 @@ export interface ChatUsageEvent {
   usage: ChatUsage;
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  modelId: string;
+  modelName: string;
+  promptVersionId: string | null;
+  promptName: string | null;
+  promptVersion: number | null;
+  contextStrategy: string;
+  pinned: boolean;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationRecord extends Omit<ConversationSummary, "messageCount"> {
+  generationSettings: Record<string, unknown>;
+}
+
+export type ConversationMessageRole = "user" | "assistant";
+export type ConversationMessageState = "complete" | "draft" | "cancelled" | "failed" | "interrupted";
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  parentId: string | null;
+  role: ConversationMessageRole;
+  content: string;
+  state: ConversationMessageState;
+  jobId: string | null;
+  tokenCount: number | null;
+  usage: ChatUsage | null;
+  terminalReason: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConversationDetail {
+  conversation: ConversationRecord;
+  messages: ConversationMessage[];
+}
+
 export interface PromptMetadata {
   name: string | null;
   declaredVersion: string | null;

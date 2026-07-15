@@ -71,25 +71,22 @@ impl ConversationService {
             .ok_or_else(|| AppError::ConversationNotFound(conversation_id.into()))
     }
 
-    pub fn rename(&self, request: RenameConversationRequest) -> AppResult<ConversationDetail> {
+    pub fn rename(&self, request: RenameConversationRequest) -> AppResult<()> {
         validate_id(&request.conversation_id, "conversation")?;
         let title = validate_title(&request.title)?;
         self.repository
             .rename(&request.conversation_id, &title, &Utc::now().to_rfc3339())?;
-        self.get(&request.conversation_id)
+        Ok(())
     }
 
-    pub fn set_pinned(
-        &self,
-        request: SetConversationPinnedRequest,
-    ) -> AppResult<ConversationDetail> {
+    pub fn set_pinned(&self, request: SetConversationPinnedRequest) -> AppResult<()> {
         validate_id(&request.conversation_id, "conversation")?;
         self.repository.set_pinned(
             &request.conversation_id,
             request.pinned,
             &Utc::now().to_rfc3339(),
         )?;
-        self.get(&request.conversation_id)
+        Ok(())
     }
 
     pub fn delete(&self, conversation_id: &str) -> AppResult<()> {
@@ -320,13 +317,16 @@ mod tests {
     fn lists_searches_updates_and_cascade_deletes_conversations() {
         let (service, _database, directory) = service();
         begin(&service, "conversation-4", "job-5");
-        let renamed = service
+        service
             .rename(RenameConversationRequest {
                 conversation_id: "conversation-4".into(),
                 title: "Persistence review".into(),
             })
             .unwrap();
-        assert_eq!(renamed.conversation.title, "Persistence review");
+        assert_eq!(
+            service.get("conversation-4").unwrap().conversation.title,
+            "Persistence review"
+        );
         service
             .set_pinned(SetConversationPinnedRequest {
                 conversation_id: "conversation-4".into(),

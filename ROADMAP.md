@@ -17,7 +17,7 @@ Exit gate: frontend build/tests pass; Rust format, tests, and clippy pass on a R
 
 ## Phase 2: LLM Chat
 
-Status: in progress. Local GGUF indexing, verified CPU runtime lifecycle, bounded streaming/cancellation, usage/context telemetry, and the Rust conversation-persistence backend are implemented. Each native turn is stored before inference and finalized with streamed text, usage, and terminal state; abandoned drafts are recovered on startup. The history/restoration UI, branches/retry/export, enforced context strategies, advanced model/session estimates, and OOM recovery remain pending.
+Status: in progress. Local GGUF indexing, verified CPU runtime lifecycle, bounded streaming/cancellation, usage/context telemetry, and durable linear conversations are implemented. The searchable history rail lazily restores exact messages/model/prompt bindings after restart and supports rename, pin, and delete. Branches/retry/export, enforced context strategies, advanced model/session estimates, and OOM recovery remain pending.
 
 - llama.cpp adapter, engine package installer, GGUF import/indexing.
 - Streaming chat, cancellation, conversation branches, exports.
@@ -26,7 +26,7 @@ Status: in progress. Local GGUF indexing, verified CPU runtime lifecycle, bounde
 
 ## Phase 3: Prompt Library
 
-Status: in progress. Secure Markdown/text import, immutable versions, search, pinning, duplication, editor, export, adjacent Chat selection, explicit mid-chat change handling, and durable backend prompt-version binding are implemented. Restoring that binding through the history UI and the future multi-layer compiled prompt inspector remain pending.
+Status: in progress. Secure Markdown/text import, immutable versions, search, pinning, duplication, editor, export, adjacent Chat selection, explicit mid-chat change handling, durable backend prompt-version binding, and history restoration are implemented. The future multi-layer compiled prompt inspector remains pending.
 
 - Markdown/text import, drag/drop, YAML parsing, immutable versions.
 - Search, tags, collections, favorites, editor, export.

@@ -320,8 +320,8 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `compile_prompt` | immutable version ID | exact selected-prompt content and approximate token estimate |
 | `list_conversations` | search/page | conversation summaries |
 | `get_conversation` | conversation ID | binding/settings plus ordered messages |
-| `rename_conversation` | conversation ID and title | updated conversation detail |
-| `set_conversation_pinned` | conversation ID and pin state | updated conversation detail |
+| `rename_conversation` | conversation ID and title | mutation result without message bodies |
+| `set_conversation_pinned` | conversation ID and pin state | mutation result without message bodies |
 | `delete_conversation` | conversation ID | cascade deletion result |
 | `get_diagnostics` | redaction level | diagnostics bundle preview |
 
