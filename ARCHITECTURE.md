@@ -134,7 +134,7 @@ Repositories own SQL and return domain records. Migrations are ordered, transact
 
 React state is split into UI session state, persisted user settings, and server-derived snapshots. Zustand stores own only their feature state. TanStack Query may be introduced for cached IPC reads once request volume warrants it.
 
-The mounted Chat workspace holds the active renderer view, while Rust owns the durable conversation record. `start_chat_generation` transactionally creates the conversation plus user message and assistant draft before inference, accumulates the exact streamed assistant text, and finalizes content, usage, and terminal state before emitting completion. Startup marks any remaining drafts as interrupted. The selected model and immutable prompt version are conversation bindings; the history UI loads their records lazily instead of placing all message content in global state.
+The mounted Chat workspace holds the active renderer view, while Rust owns the durable conversation record. `start_chat_generation` transactionally creates the conversation plus user message and assistant draft before inference, accumulates the exact streamed assistant text, and finalizes content, usage, and terminal state before emitting completion. Startup marks any remaining drafts as interrupted. The selected model and immutable prompt version are conversation bindings; the history UI loads their records lazily instead of placing all message content in global state. Conversation export is also Rust-owned: it reads the durable record, emits a bounded Markdown transcript, and embeds structured model, prompt, context, and generation-setting provenance.
 
 ## SQLite schema
 
@@ -323,6 +323,7 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `rename_conversation` | conversation ID and title | mutation result without message bodies |
 | `set_conversation_pinned` | conversation ID and pin state | mutation result without message bodies |
 | `delete_conversation` | conversation ID | cascade deletion result |
+| `export_conversation` | conversation ID | bounded Markdown file name, media type, transcript, and provenance |
 | `get_diagnostics` | redaction level | diagnostics bundle preview |
 
 Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes. Model scan progress plus engine state/log events are implemented; the remaining names are contracts for later phases:

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use serde::Serialize;
 
 use crate::{
     engines::traits::Usage,
@@ -11,14 +12,15 @@ use crate::{
 use super::{
     repository::{ConversationRepository, FinalizeAssistantInput},
     types::{
-        BeginTurnInput, ConversationDetail, ConversationMessage, ConversationMessageState,
-        ConversationSummary, ListConversationsRequest, RenameConversationRequest,
-        SetConversationPinnedRequest,
+        BeginTurnInput, ConversationDetail, ConversationExport, ConversationMessage,
+        ConversationMessageRole, ConversationMessageState, ConversationRecord, ConversationSummary,
+        ListConversationsRequest, RenameConversationRequest, SetConversationPinnedRequest,
     },
 };
 
 const MAX_MESSAGE_BYTES: usize = 256 * 1024;
 const MAX_ASSISTANT_BYTES: usize = 1024 * 1024;
+const MAX_CONVERSATION_EXPORT_BYTES: usize = 16 * 1024 * 1024;
 
 pub struct ConversationService {
     repository: ConversationRepository,
@@ -94,6 +96,15 @@ impl ConversationService {
         self.repository.delete(conversation_id)
     }
 
+    pub fn export(&self, conversation_id: &str) -> AppResult<ConversationExport> {
+        let detail = self.get(conversation_id)?;
+        Ok(ConversationExport {
+            file_name: format!("{}.md", safe_file_stem(&detail.conversation.title)),
+            media_type: "text/markdown;charset=utf-8".into(),
+            content: conversation_markdown(&detail)?,
+        })
+    }
+
     pub(crate) fn begin_turn(&self, input: BeginTurnInput<'_>) -> AppResult<()> {
         for (value, label) in [
             (input.conversation_id, "conversation"),
@@ -165,7 +176,7 @@ fn validate_id(value: &str, label: &str) -> AppResult<()> {
 
 fn validate_title(value: &str) -> AppResult<String> {
     let value = value.trim();
-    if value.is_empty() || value.chars().count() > 120 || value.contains('\0') {
+    if value.is_empty() || value.chars().count() > 120 || value.contains(['\r', '\n', '\0']) {
         return Err(AppError::InvalidConversation(
             "conversation titles must contain 1 to 120 characters".into(),
         ));
@@ -182,10 +193,114 @@ fn validate_content(value: &str, max_bytes: usize, label: &str) -> AppResult<()>
     Ok(())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConversationProvenance<'a> {
+    schema_version: u32,
+    conversation: &'a ConversationRecord,
+}
+
+fn conversation_markdown(detail: &ConversationDetail) -> AppResult<String> {
+    let provenance = serde_json::to_string_pretty(&ConversationProvenance {
+        schema_version: 1,
+        conversation: &detail.conversation,
+    })
+    .map_err(|error| {
+        AppError::Operation(format!(
+            "conversation provenance could not be exported: {error}"
+        ))
+    })?;
+    let mut output = String::new();
+    append_export(&mut output, "# ")?;
+    append_export(
+        &mut output,
+        &detail
+            .conversation
+            .title
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    )?;
+    append_export(&mut output, "\n\n## Provenance\n\n```json\n")?;
+    append_export(&mut output, &provenance)?;
+    append_export(&mut output, "\n```\n")?;
+
+    for (index, message) in detail.messages.iter().enumerate() {
+        let role = match message.role {
+            ConversationMessageRole::User => "User",
+            ConversationMessageRole::Assistant => "Assistant",
+        };
+        append_export(&mut output, &format!("\n## {}. {role}\n\n", index + 1))?;
+        if message.content.is_empty() {
+            append_export(&mut output, "_No response text was stored._")?;
+        } else {
+            append_export(&mut output, &message.content)?;
+        }
+        append_export(
+            &mut output,
+            &format!(
+                "\n\n> State: `{}` | Message: `{}` | Created: `{}`",
+                message.state.as_str(),
+                message.id,
+                message.created_at
+            ),
+        )?;
+        if let Some(parent_id) = &message.parent_id {
+            append_export(&mut output, &format!(" | Parent: `{parent_id}`"))?;
+        }
+        if let Some(usage) = &message.usage {
+            append_export(
+                &mut output,
+                &format!(
+                    " | Usage: {} prompt, {} output, {:.1} tok/s",
+                    usage.prompt_tokens, usage.output_tokens, usage.tokens_per_second
+                ),
+            )?;
+        }
+        if let Some(reason) = &message.terminal_reason {
+            let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+            append_export(&mut output, &format!(" | Terminal: `{reason}`"))?;
+        }
+        append_export(&mut output, "\n")?;
+    }
+    Ok(output)
+}
+
+fn append_export(output: &mut String, value: &str) -> AppResult<()> {
+    let size = output.len().checked_add(value.len()).ok_or_else(|| {
+        AppError::InvalidConversation("the conversation export is too large".into())
+    })?;
+    if size > MAX_CONVERSATION_EXPORT_BYTES {
+        return Err(AppError::InvalidConversation(
+            "conversation exports are limited to 16 MiB".into(),
+        ));
+    }
+    output.push_str(value);
+    Ok(())
+}
+
+fn safe_file_stem(value: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let value = value.trim_matches('-');
+    if value.is_empty() {
+        "conversation".into()
+    } else {
+        value.chars().take(80).collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversations::types::ConversationMessageRole;
     use rusqlite::params;
     use uuid::Uuid;
 
@@ -350,5 +465,46 @@ mod tests {
         ));
         drop(service);
         let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn exports_a_bounded_markdown_transcript_with_provenance() {
+        let (service, _database, directory) = service();
+        begin(&service, "conversation-export", "job-export");
+        let usage = Usage {
+            prompt_tokens: 21,
+            output_tokens: 8,
+            tokens_per_second: 14.5,
+        };
+        service
+            .finalize_assistant(
+                "job-export-assistant",
+                "job-export",
+                "SQLite keeps the turn durable.",
+                ConversationMessageState::Complete,
+                Some(&usage),
+                Some("completed"),
+            )
+            .unwrap();
+
+        let exported = service.export("conversation-export").unwrap();
+        assert_eq!(exported.media_type, "text/markdown;charset=utf-8");
+        assert_eq!(exported.file_name, "Explain-durable-local-chat.md");
+        assert!(exported.content.contains("\"schemaVersion\": 1"));
+        assert!(exported.content.contains("\"modelId\": \"model-1\""));
+        assert!(exported.content.contains("\"maxOutputTokens\": 512"));
+        assert!(exported.content.contains("## 1. User"));
+        assert!(exported.content.contains("Explain durable local chat."));
+        assert!(exported.content.contains("## 2. Assistant"));
+        assert!(exported.content.contains("SQLite keeps the turn durable."));
+        assert!(exported.content.contains("21 prompt, 8 output, 14.5 tok/s"));
+        drop(service);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn rejects_multiline_conversation_titles() {
+        assert!(validate_title("first\nsecond").is_err());
+        assert_eq!(safe_file_stem("../../"), "conversation");
     }
 }

@@ -81,6 +81,7 @@ export function ChatWorkspace() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [exportingConversationId, setExportingConversationId] = useState<string | null>(null);
   const tokenSequences = useRef(new Map<string, number>());
   const stateSequences = useRef(new Map<string, number>());
   const usageSequences = useRef(new Map<string, number>());
@@ -330,6 +331,19 @@ export function ChatWorkspace() {
     }
   }
 
+  async function exportConversation(summary: ConversationSummary) {
+    setExportingConversationId(summary.id);
+    setError(null);
+    try {
+      const exported = await bridge.exportConversation(summary.id);
+      downloadText(exported.fileName, exported.content, exported.mediaType);
+    } catch (caught) {
+      setError(errorMessage(caught, "The conversation could not be exported."));
+    } finally {
+      setExportingConversationId(null);
+    }
+  }
+
   async function selectModel(value: string) {
     if (value === "manage") {
       setActiveView("models");
@@ -554,6 +568,7 @@ export function ChatWorkspace() {
                 <div className="conversation-actions">
                   <button aria-label={summary.pinned ? "Unpin conversation" : "Pin conversation"} className="conversation-action" disabled={generating && summary.id === conversationId} onClick={() => void toggleConversationPinned(summary)} title={summary.pinned ? "Unpin conversation" : "Pin conversation"} type="button">{summary.pinned ? <PinOff size={13} /> : <Pin size={13} />}</button>
                   <button aria-label="Rename conversation" className="conversation-action" disabled={generating && summary.id === conversationId} onClick={() => beginRenameConversation(summary)} title="Rename conversation" type="button"><Pencil size={13} /></button>
+                  <button aria-label="Export conversation" className="conversation-action" disabled={exportingConversationId !== null} onClick={() => void exportConversation(summary)} title="Export Markdown" type="button">{exportingConversationId === summary.id ? <LoaderCircle className="spin" size={13} /> : <Download size={13} />}</button>
                   <button aria-label="Delete conversation" className="conversation-action danger" disabled={generating && summary.id === conversationId} onClick={() => void deleteConversation(summary)} title="Delete conversation" type="button"><Trash2 size={13} /></button>
                 </div>
               </>}
@@ -788,6 +803,15 @@ function writeLastPromptId(versionId: string | null) {
   } catch {
     // A blocked renderer storage preference must not change conversation behavior.
   }
+}
+
+function downloadText(fileName: string, content: string, mediaType: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: mediaType }));
+  const link = window.document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function errorMessage(caught: unknown, fallback: string): string {

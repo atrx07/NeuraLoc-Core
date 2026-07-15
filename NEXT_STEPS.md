@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7 is complete for durable linear conversations: Rust-owned drafts/finalization/recovery plus the searchable, lazy-loaded history rail, restart restoration, rename, pin, and delete flows are connected. Immediate work is branch/retry/export behavior, followed by enforced context strategies, advanced selector fit behavior, multi-layer prompt composition, and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7 is complete for durable linear conversations: Rust-owned drafts/finalization/recovery plus the searchable, lazy-loaded history rail, restart restoration, rename, pin, delete, and bounded provenance-preserving Markdown export flows are connected. Immediate work is branch/retry behavior, followed by enforced context strategies, advanced selector fit behavior, multi-layer prompt composition, and the verified catalog.
 
 ## Dependency Map
 
@@ -174,7 +174,7 @@ Basic streaming status: completed on 2026-07-14, with context visibility and imm
 
 Dependencies: step 6 contracts, step 4 model identity, and step 5 prompt-version identity. Implement the repository before declaring streaming chat complete so messages are crash recoverable.
 
-Linear-path status: completed on 2026-07-15. Migration 5, repository/service ownership, transactional user/draft creation, deterministic message positions and parent links, terminal content/usage/state finalization, startup interruption recovery, list/page/search/open/rename/pin/delete commands, lazy history UI, immutable binding restoration, compact drawer behavior, and cascade/foreign-key tests are implemented. Branch creation, retry, and export remain active work before the full Step 7 acceptance gate.
+Linear-path status: completed on 2026-07-15. Migration 5, repository/service ownership, transactional user/draft creation, deterministic message positions and parent links, terminal content/usage/state finalization, startup interruption recovery, list/page/search/open/rename/pin/delete/export commands, lazy history UI, immutable binding restoration, compact drawer behavior, bounded Markdown provenance export, and cascade/foreign-key tests are implemented. Branch creation and retry remain active work before the full Step 7 acceptance gate.
 
 - Add `ConversationRepository` and `MessageRepository` using the existing tables, with explicit transactions for conversation creation, user messages, assistant draft/finalization, branch parentage, and timestamps.
 - Persist the user message before launching generation. Create an assistant draft tied to the job, append/finalize in bounded checkpoints or persist a final content record, and mark interrupted drafts on startup.
@@ -208,7 +208,7 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
 2. **Runtime checkpoint (completed 2026-07-14 for CPU):** verified llama.cpp install + lifecycle/logging + real Qwen load/stream/stop/no-orphan validation.
 3. **Prompt checkpoint (completed 2026-07-15):** secure Markdown/text import, immutable versioning, management workspace, adjacent selector, and ephemeral Chat binding.
-4. **Chat persistence checkpoint (in progress):** durable linear conversations and restart recovery are complete; branches, retry/export, enforced context management, and engine crash recovery remain.
+4. **Chat persistence checkpoint (in progress):** durable linear conversations, restart recovery, and provenance-preserving Markdown export are complete; branches, retry, enforced context management, and engine crash recovery remain.
 5. **Catalog checkpoint:** signed metadata + resumable verified downloads.
 
 At every checkpoint run frontend build/tests, Rust format/check/test/clippy, migration tests from empty and prior schemas, fake-engine lifecycle tests where applicable, and a Tauri debug smoke test. Do not move to the next checkpoint with orphaned processes, destructive migration changes, unbounded file reads, or renderer-owned native/network access.

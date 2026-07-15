@@ -336,6 +336,12 @@ export interface ConversationDetail {
   messages: ConversationMessage[];
 }
 
+export interface ConversationExport {
+  fileName: string;
+  mediaType: string;
+  content: string;
+}
+
 export interface PromptMetadata {
   name: string | null;
   declaredVersion: string | null;

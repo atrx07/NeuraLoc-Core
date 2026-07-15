@@ -119,6 +119,14 @@ pub struct ConversationDetail {
     pub messages: Vec<ConversationMessage>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationExport {
+    pub file_name: String,
+    pub media_type: String,
+    pub content: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ListConversationsRequest {

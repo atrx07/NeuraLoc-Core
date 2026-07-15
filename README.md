@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, live context telemetry, the secure versioned Prompt Library, and durable linear conversation history are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Conversation branches/retry/export, multi-layer prompt composition, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, live context telemetry, the secure versioned Prompt Library, durable linear conversation history, and provenance-preserving Markdown export are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Conversation branches/retry, multi-layer prompt composition, enforced context strategies, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -68,7 +68,7 @@ The current prototype runs GGUF models locally through the verified llama.cpp CP
    ```
 
 9. Read the response. The usage line appears at the bottom of the assistant message and reports output tokens, prompt tokens, and measured speed. The compact strip above the composer shows context usage, context capacity, selected prompt version, output progress, generation state, speed, and the active CPU/backend route.
-10. Use the conversation rail to rename or pin the saved chat, start another conversation, then reopen the first one. Restarting the app restores the last opened durable conversation and its exact model/prompt bindings.
+10. Use the conversation rail to rename or pin the saved chat, export its bounded Markdown transcript with the download icon, start another conversation, then reopen the first one. Restarting the app restores the last opened durable conversation and its exact model/prompt bindings.
 11. To test cancellation, send a longer prompt and press the square `Stop generation` button while the model is responding. The partial turn should end as stopped and remain identifiable in local history.
 12. When finished, use the square button in the Chat header to unload the model. The runtime remains owned by NeuraLoc-Core and is stopped without killing unrelated processes.
 
@@ -80,7 +80,7 @@ The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.c
 - If Chat says `No model selected`, choose the model from the selector rather than typing into the composer. The composer stays disabled until the matching runtime session is ready.
 - If a response is still generating, use the visible stop button. Open `Logs` or the runtime log section in Model Manager if the process reports an error.
 - If the context strip shows a `~` prefix during generation, the number is an explicitly approximate live estimate. Final llama.cpp usage replaces it after the response completes.
-- Native chat turns are transactionally stored in SQLite before generation and finalized with usage/terminal state afterward. The rail supports search, lazy open, rename, pin, delete, and restart restoration; an interrupted draft is shown explicitly rather than disappearing.
+- Native chat turns are transactionally stored in SQLite before generation and finalized with usage/terminal state afterward. The rail supports search, lazy open, rename, pin, provenance-preserving Markdown export, delete, and restart restoration; an interrupted draft is shown explicitly rather than disappearing.
 
 ## Browser UI Preview
 

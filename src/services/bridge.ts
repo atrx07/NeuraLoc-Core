@@ -22,6 +22,7 @@ import type {
   ModelScanSummary,
   CompiledPrompt,
   ConversationDetail,
+  ConversationExport,
   ConversationSummary,
   PromptExport,
   PromptExportMode,
@@ -301,6 +302,22 @@ export const bridge = {
   async deleteConversation(conversationId: string): Promise<void> {
     if (!isTauri()) throw new Error("Conversation deletion is available in the desktop app.");
     return invoke<void>("delete_conversation", { request: { conversationId } });
+  },
+
+  async exportConversation(conversationId: string): Promise<ConversationExport> {
+    if (!isTauri()) {
+      if (conversationId !== demoConversationSummary().id) {
+        throw new Error("The demo conversation was not found.");
+      }
+      return {
+        fileName: "Review-the-persistence-design.md",
+        mediaType: "text/markdown;charset=utf-8",
+        content: "# Review the persistence design\n\n## 1. User\n\nReview the conversation persistence design.\n\n## 2. Assistant\n\nThe turn is persisted before inference and finalized after streaming completes.\n",
+      };
+    }
+    return invoke<ConversationExport>("export_conversation", {
+      request: { conversationId },
+    });
   },
 
   async confirmDeleteConversation(title: string): Promise<boolean> {

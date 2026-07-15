@@ -3,8 +3,8 @@ use tauri::State;
 use crate::{
     app_state::AppState,
     conversations::{
-        ConversationDetail, ConversationIdRequest, ConversationSummary, ListConversationsRequest,
-        RenameConversationRequest, SetConversationPinnedRequest,
+        ConversationDetail, ConversationExport, ConversationIdRequest, ConversationSummary,
+        ListConversationsRequest, RenameConversationRequest, SetConversationPinnedRequest,
     },
     errors::IpcError,
 };
@@ -52,5 +52,16 @@ pub fn delete_conversation(
     state
         .conversations
         .delete(&request.conversation_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn export_conversation(
+    state: State<'_, AppState>,
+    request: ConversationIdRequest,
+) -> Result<ConversationExport, IpcError> {
+    state
+        .conversations
+        .export(&request.conversation_id)
         .map_err(Into::into)
 }

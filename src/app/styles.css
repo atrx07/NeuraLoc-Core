@@ -165,7 +165,7 @@ p { color: var(--muted); line-height: 1.55; }
 .conversation-list { margin-top: 12px; }
 .conversation-entry { position: relative; min-height: 48px; }
 .conversation-entry + .conversation-entry { margin-top: 3px; }
-.conversation-item { width: 100%; min-height: 48px; display: grid; gap: 4px; padding: 9px 72px 9px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.conversation-item { width: 100%; min-height: 48px; display: grid; gap: 4px; padding: 9px 95px 9px 10px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .conversation-entry.transient .conversation-item { padding-right: 10px; }
 .conversation-item.active { border-color: var(--border-soft); background: var(--surface); }
 .conversation-item:disabled { cursor: default; }
