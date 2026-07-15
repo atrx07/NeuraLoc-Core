@@ -2,7 +2,7 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop application for discovering, managing, and running local AI models through verified native inference engines. The application uses React and TypeScript for the interface, Tauri 2 for the desktop boundary, Rust for orchestration, and SQLite for durable metadata.
 
-Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, live context telemetry, the secure versioned Prompt Library, durable conversation history, independent branches/retry, and provenance-preserving Markdown export are implemented. A real opt-in Qwen3 4B load/stream/stop test passed on 2026-07-14. Multi-layer prompt composition, enforced context strategies, advanced model fit behavior, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
+Current version: `0.1.0`, local-chat checkpoint in progress. Hardware/settings functionality, local GGUF indexing, the verified pinned llama.cpp Windows x64 CPU package, owned model launch/stop, bounded streaming chat, exact model-tokenized rolling context admission, the secure versioned Prompt Library, durable conversation history, independent branches/retry, and provenance-preserving Markdown export are implemented. A real opt-in Qwen3 4B load/count/stream/cancel/stop test passed on 2026-07-15. Multi-layer prompt composition, advanced model fit behavior, incremental draft checkpoints, and the download catalog remain ahead. See `STATUS.md` for the exact implementation state and `NEXT_STEPS.md` for the dependency-aware plan.
 
 ## Requirements
 
@@ -67,12 +67,13 @@ The current prototype runs GGUF models locally through the verified llama.cpp CP
    Hello. Confirm that you are running locally in one short sentence.
    ```
 
-9. Read the response. The usage line appears at the bottom of the assistant message and reports output tokens, prompt tokens, and measured speed. The compact strip above the composer shows context usage, context capacity, selected prompt version, output progress, generation state, speed, and the active CPU/backend route.
+9. Read the response. The usage line appears at the bottom of the assistant message and reports output tokens, prompt tokens, and measured speed. The compact strip above the composer shows exact admitted input usage, context capacity, how many history messages were kept or omitted, selected prompt version, output progress, generation state, speed, and the active CPU/backend route.
 10. Use the conversation rail to rename or pin the saved chat, export its bounded Markdown transcript with the download icon, start another conversation, then reopen the first one. Restarting the app restores the last opened durable conversation and its exact model/prompt bindings.
 11. To test branching, use a message's `Branch from here` icon. Chat should open a new history entry labeled `Branch`, preserve the selected prefix and settings, and leave the original conversation unchanged.
 12. To test retry, use the assistant message's `Retry in new branch` icon while its model is loaded. Chat should branch immediately before that user turn, resend it, and stream a fresh answer into the new branch. Reopen the original from history to verify its response is unchanged.
-13. To test cancellation, send a longer prompt and press the square `Stop generation` button while the model is responding. The partial turn should end as stopped and remain identifiable in local history.
-14. When finished, use the square button in the Chat header to unload the model. The runtime remains owned by NeuraLoc-Core and is stopped without killing unrelated processes.
+13. To test rolling context, use a smaller loaded context such as 4096, reserve part of it with the maximum-output setting, and continue a conversation until the status strip reports omitted history. The newest complete turns should remain admitted, the response should complete, and reopening or exporting the conversation should still contain the full durable transcript.
+14. To test cancellation, send a longer prompt and press the square `Stop generation` button while the model is responding. The partial turn should end as stopped and remain identifiable in local history.
+15. When finished, use the square button in the Chat header to unload the model. The runtime remains owned by NeuraLoc-Core and is stopped without killing unrelated processes.
 
 The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.cpp `b9986` Windows x64 CPU build. On a CPU-only route, high CPU utilization during generation is expected. The first response can also take longer while the model is loading into memory.
 
@@ -81,7 +82,7 @@ The first verified local run used a Qwen3 4B Q4_K_M GGUF with the pinned llama.c
 - If an imported model does not appear in Chat, return to Model Manager and confirm that its verification state is `Ready`, then reopen Chat so it refreshes the model library.
 - If Chat says `No model selected`, choose the model from the selector rather than typing into the composer. The composer stays disabled until the matching runtime session is ready.
 - If a response is still generating, use the visible stop button. Open `Logs` or the runtime log section in Model Manager if the process reports an error.
-- If the context strip shows a `~` prefix during generation, the number is an explicitly approximate live estimate. Final llama.cpp usage replaces it after the response completes.
+- Before the model reports its admission decision, the context strip may show a `~` approximate preview. The authenticated llama.cpp tokenizer then replaces it with the exact input count and rolling-window kept/omitted totals. If the system prompt plus current user message cannot fit beside the selected output reserve, shorten them or lower maximum output.
 - Native chat turns are transactionally stored in SQLite before generation and finalized with usage/terminal state afterward. The rail supports search, lazy open, rename, pin, branch, provenance-preserving Markdown export, delete, and restart restoration; Retry always generates into a new branch, and an interrupted draft is shown explicitly rather than disappearing.
 
 ## Browser UI Preview

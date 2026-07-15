@@ -37,6 +37,7 @@ function message(overrides: Partial<ConversationMessage>): ConversationMessage {
     jobId: null,
     tokenCount: null,
     usage: null,
+    context: null,
     terminalReason: null,
     position: 1,
     createdAt: "2026-07-15T00:00:00Z",

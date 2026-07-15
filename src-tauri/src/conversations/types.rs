@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::engines::traits::Usage;
+use crate::{context::ContextWindowReport, engines::traits::Usage};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -111,6 +111,7 @@ pub struct ConversationMessage {
     pub job_id: Option<String>,
     pub token_count: Option<u64>,
     pub usage: Option<Usage>,
+    pub context: Option<ContextWindowReport>,
     pub terminal_reason: Option<String>,
     pub position: u64,
     pub created_at: String,
@@ -178,4 +179,6 @@ pub(crate) struct BeginTurnInput<'a> {
     pub prompt_version_id: Option<&'a str>,
     pub user_content: &'a str,
     pub max_output_tokens: u32,
+    pub context_strategy: &'a str,
+    pub context: &'a ContextWindowReport,
 }

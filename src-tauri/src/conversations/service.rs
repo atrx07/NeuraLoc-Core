@@ -4,6 +4,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::{
+    context::{ContextWindowReport, CONTEXT_SAFETY_TOKENS, ROLLING_WINDOW_STRATEGY},
     engines::traits::Usage,
     errors::{AppError, AppResult},
     storage::Database,
@@ -145,6 +146,7 @@ impl ConversationService {
                 "maximum output tokens must be between 1 and 4096".into(),
             ));
         }
+        validate_context_report(&input)?;
         self.repository.begin_turn(input, &Utc::now().to_rfc3339())
     }
 
@@ -184,6 +186,30 @@ impl ConversationService {
             now: &Utc::now().to_rfc3339(),
         })
     }
+}
+
+fn validate_context_report(input: &BeginTurnInput<'_>) -> AppResult<()> {
+    let context: &ContextWindowReport = input.context;
+    let expected_budget = context
+        .context_capacity
+        .checked_sub(context.reserved_output_tokens)
+        .and_then(|value| value.checked_sub(context.safety_tokens))
+        .ok_or_else(|| {
+            AppError::InvalidConversation("the context window reserve is invalid".into())
+        })?;
+    if input.context_strategy != ROLLING_WINDOW_STRATEGY
+        || context.strategy != ROLLING_WINDOW_STRATEGY
+        || context.reserved_output_tokens != input.max_output_tokens
+        || context.safety_tokens != CONTEXT_SAFETY_TOKENS
+        || context.input_token_budget != expected_budget
+        || context.input_tokens > u64::from(context.input_token_budget)
+        || context.approximate
+    {
+        return Err(AppError::InvalidConversation(
+            "the context window report is inconsistent".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_id(value: &str, label: &str) -> AppResult<()> {
@@ -284,6 +310,18 @@ fn conversation_markdown(detail: &ConversationDetail) -> AppResult<String> {
                 ),
             )?;
         }
+        if let Some(context) = &message.context {
+            append_export(
+                &mut output,
+                &format!(
+                    " | Context: {} input / {} capacity, {} history kept, {} omitted",
+                    context.input_tokens,
+                    context.context_capacity,
+                    context.retained_history_messages,
+                    context.omitted_history_messages
+                ),
+            )?;
+        }
         if let Some(reason) = &message.terminal_reason {
             let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
             append_export(&mut output, &format!(" | Terminal: `{reason}`"))?;
@@ -360,6 +398,7 @@ mod tests {
     }
 
     fn begin(service: &ConversationService, conversation_id: &str, job_id: &str) {
+        let context = context_report(512);
         service
             .begin_turn(BeginTurnInput {
                 conversation_id,
@@ -370,8 +409,24 @@ mod tests {
                 prompt_version_id: None,
                 user_content: "Explain durable local chat.",
                 max_output_tokens: 512,
+                context_strategy: ROLLING_WINDOW_STRATEGY,
+                context: &context,
             })
             .unwrap();
+    }
+
+    fn context_report(reserved_output_tokens: u32) -> ContextWindowReport {
+        ContextWindowReport {
+            strategy: ROLLING_WINDOW_STRATEGY.into(),
+            context_capacity: 4_096,
+            input_token_budget: 4_096 - reserved_output_tokens - CONTEXT_SAFETY_TOKENS,
+            input_tokens: 21,
+            reserved_output_tokens,
+            safety_tokens: CONTEXT_SAFETY_TOKENS,
+            retained_history_messages: 0,
+            omitted_history_messages: 0,
+            approximate: false,
+        }
     }
 
     #[test]
@@ -384,6 +439,7 @@ mod tests {
         assert_eq!(draft.messages[0].position, 1);
         assert_eq!(draft.messages[1].state, ConversationMessageState::Draft);
         assert_eq!(draft.messages[1].parent_id.as_deref(), Some("job-1-user"));
+        assert_eq!(draft.messages[1].context, Some(context_report(512)));
 
         let usage = Usage {
             prompt_tokens: 21,
@@ -438,6 +494,7 @@ mod tests {
         let (service, database, directory) = service();
         begin(&service, "conversation-3", "job-3");
         seed_model(&database, "model-2", "Llama 3B");
+        let context = context_report(512);
         let result = service.begin_turn(BeginTurnInput {
             conversation_id: "conversation-3",
             user_message_id: "job-4-user",
@@ -447,6 +504,8 @@ mod tests {
             prompt_version_id: None,
             user_content: "This must roll back.",
             max_output_tokens: 512,
+            context_strategy: ROLLING_WINDOW_STRATEGY,
+            context: &context,
         });
         assert!(result.is_err());
         assert_eq!(service.get("conversation-3").unwrap().messages.len(), 2);

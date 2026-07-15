@@ -266,9 +266,22 @@ export interface ChatUsage {
   tokensPerSecond: number;
 }
 
+export interface ContextWindowReport {
+  strategy: "rolling_window";
+  contextCapacity: number;
+  inputTokenBudget: number;
+  inputTokens: number;
+  reservedOutputTokens: number;
+  safetyTokens: number;
+  retainedHistoryMessages: number;
+  omittedHistoryMessages: number;
+  approximate: boolean;
+}
+
 export interface ChatGenerationResult {
   state: ChatGenerationState;
   usage: ChatUsage | null;
+  context: ContextWindowReport;
 }
 
 export interface ChatTokenBatch {
@@ -291,6 +304,13 @@ export interface ChatUsageEvent {
   conversationId: string;
   messageId: string;
   usage: ChatUsage;
+}
+
+export interface ChatContextEvent {
+  jobId: string;
+  conversationId: string;
+  messageId: string;
+  context: ContextWindowReport;
 }
 
 export interface ConversationSummary {
@@ -328,6 +348,7 @@ export interface ConversationMessage {
   jobId: string | null;
   tokenCount: number | null;
   usage: ChatUsage | null;
+  context: ContextWindowReport | null;
   terminalReason: string | null;
   position: number;
   createdAt: string;

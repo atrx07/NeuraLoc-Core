@@ -38,8 +38,8 @@ The application never loads an entire multi-gigabyte model merely to hash it. Ch
 - User text is never interpolated into a command shell.
 - Environment variables are allow-listed per adapter.
 - The llama.cpp adapter binds only `127.0.0.1`, gives each session a random environment-only API key, challenges authentication, and matches `/props` model/build identity before marking the process ready.
-- Chat generation remains inside that authenticated Rust adapter. The renderer submits bounded role/content data through Tauri IPC, receives sequenced token/usage/state events, and never receives the loopback endpoint or API key.
-- Generation accepts one active job per CPU session, fixes non-thinking chat-template kwargs, bounds message count/content/request/output/event sizes, rejects non-UTF-8, truncated, or visible-text-empty event streams, keeps hidden reasoning outside renderer events, and cancels by exact job ID.
+- Chat generation and exact token counting remain inside that authenticated Rust adapter. The renderer submits bounded role/content data through Tauri IPC, receives sequenced context/token/usage/state events, and never receives the loopback endpoint or API key.
+- Generation accepts one active job per CPU session, fixes non-thinking chat-template kwargs, bounds message count/content/request/output/event sizes, exact-counts the templated request, and admits only the newest complete history turns that fit after mandatory content and output reserves. Durable history is not deleted. The adapter rejects non-UTF-8, truncated, or visible-text-empty event streams, keeps hidden reasoning outside renderer events, and cancels by exact job ID.
 - Every process receives an ownership ID and is tracked by PID plus creation metadata.
 - Shutdown acts only on tracked handles; NeuraLoc-Core never kills by image name or occupied port.
 - Captured output is limited to 2,000 lines per process and 16 KiB per line, encoded defensively, and scrubbed before retention or IPC exposure.

@@ -25,7 +25,7 @@ const CONVERSATION_COLUMNS: &str = "
 const MESSAGE_COLUMNS: &str = "
     id, conversation_id, parent_id, role, content_json, token_count, state,
     job_id, usage_json, terminal_reason, COALESCE(position, rowid), created_at,
-    COALESCE(updated_at, created_at), source_message_id
+    COALESCE(updated_at, created_at), source_message_id, context_json
 ";
 
 pub(crate) struct ConversationRepository {
@@ -126,6 +126,11 @@ impl ConversationRepository {
         let title = title_from_message(input.user_content);
         let user_content = serialize_content(input.user_content)?;
         let assistant_content = serialize_content("")?;
+        let context_json = serde_json::to_string(input.context).map_err(|error| {
+            AppError::Operation(format!(
+                "context window report could not be serialized: {error}"
+            ))
+        })?;
         let mut connection = self.database.connection();
         let transaction = connection.transaction()?;
         let existing = transaction
@@ -150,13 +155,14 @@ impl ConversationRepository {
                     "INSERT INTO conversations(
                        id, title, model_id, prompt_version_id, generation_settings_json,
                        context_strategy, pinned, created_at, updated_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, 'full_history', 0, ?6, ?6)",
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)",
                     params![
                         input.conversation_id,
                         title,
                         input.model_id,
                         input.prompt_version_id,
                         settings_json,
+                        input.context_strategy,
                         now,
                     ],
                 )?;
@@ -186,6 +192,7 @@ impl ConversationRepository {
                 content_json: &user_content,
                 state: ConversationMessageState::Complete,
                 job_id: None,
+                context_json: None,
                 position: next_position,
                 now,
             },
@@ -200,6 +207,7 @@ impl ConversationRepository {
                 content_json: &assistant_content,
                 state: ConversationMessageState::Draft,
                 job_id: Some(input.job_id),
+                context_json: Some(&context_json),
                 position: next_position + 1,
                 now,
             },
@@ -207,8 +215,14 @@ impl ConversationRepository {
         transaction.execute(
             "UPDATE conversations
              SET generation_settings_json = ?2, updated_at = ?3
+                 , context_strategy = ?4
              WHERE id = ?1",
-            params![input.conversation_id, settings_json, now],
+            params![
+                input.conversation_id,
+                settings_json,
+                now,
+                input.context_strategy
+            ],
         )?;
         transaction.commit()?;
         Ok(())
@@ -417,8 +431,8 @@ impl ConversationRepository {
                 "INSERT INTO messages(
                    id, conversation_id, parent_id, role, content_json, token_count,
                    pinned, created_at, state, job_id, usage_json, terminal_reason,
-                   position, updated_at, source_message_id
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13)",
+                   position, updated_at, source_message_id, context_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     new_message_id,
                     new_conversation_id,
@@ -433,6 +447,7 @@ impl ConversationRepository {
                     message.position,
                     message.updated_at,
                     source_message_id,
+                    message.context_json,
                 ],
             )?;
             message_ids.insert(source_message_id, new_message_id);
@@ -462,6 +477,7 @@ struct InsertMessageInput<'a> {
     content_json: &'a str,
     state: ConversationMessageState,
     job_id: Option<&'a str>,
+    context_json: Option<&'a str>,
     position: i64,
     now: &'a str,
 }
@@ -470,8 +486,9 @@ fn insert_message(transaction: &Transaction<'_>, input: InsertMessageInput<'_>) 
     transaction.execute(
         "INSERT INTO messages(
            id, conversation_id, parent_id, role, content_json, token_count, pinned,
-           created_at, state, job_id, usage_json, terminal_reason, position, updated_at
-         ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?9, ?6, ?7, NULL, NULL, ?8, ?9)",
+           created_at, state, job_id, usage_json, terminal_reason, position, updated_at,
+           context_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?9, ?6, ?7, NULL, NULL, ?8, ?9, ?10)",
         params![
             input.id,
             input.conversation_id,
@@ -482,6 +499,7 @@ fn insert_message(transaction: &Transaction<'_>, input: InsertMessageInput<'_>) 
             input.job_id,
             input.position,
             input.now,
+            input.context_json,
         ],
     )?;
     Ok(())
@@ -623,6 +641,7 @@ struct StoredMessage {
     created_at: String,
     updated_at: String,
     source_message_id: Option<String>,
+    context_json: Option<String>,
 }
 
 impl StoredMessage {
@@ -642,6 +661,7 @@ impl StoredMessage {
             created_at: row.get(11)?,
             updated_at: row.get(12)?,
             source_message_id: row.get(13)?,
+            context_json: row.get(14)?,
         })
     }
 }
@@ -666,6 +686,13 @@ impl TryFrom<StoredMessage> for ConversationMessage {
             .map_err(|error| {
                 AppError::Operation(format!("message {} has corrupt usage: {error}", value.id))
             })?;
+        let context = value
+            .context_json
+            .map(|json| serde_json::from_str(&json))
+            .transpose()
+            .map_err(|error| {
+                AppError::Operation(format!("message {} has corrupt context: {error}", value.id))
+            })?;
         Ok(Self {
             id: value.id.clone(),
             conversation_id: value.conversation_id,
@@ -687,6 +714,7 @@ impl TryFrom<StoredMessage> for ConversationMessage {
                     AppError::Operation(format!("message {} has invalid tokens", value.id))
                 })?,
             usage,
+            context,
             terminal_reason: value.terminal_reason,
             position: u64::try_from(value.position).map_err(|_| {
                 AppError::Operation(format!("message {} has an invalid position", value.id))

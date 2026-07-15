@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7 now has Rust-owned drafts/finalization/recovery, searchable lazy history, restart restoration, rename, pin, delete, bounded provenance-preserving Markdown export, independent branches, and retry-into-branch connected end to end. User desktop acceptance on 2026-07-15 confirmed branch, retry, restart persistence, and prompt import. Immediate work is enforced context strategies, followed by advanced selector fit behavior, multi-layer prompt composition, incremental draft checkpoints/history pagination, and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-15 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity and exact token-count checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Step 5 is complete for the current single selected-prompt layer. Step 7 now has Rust-owned drafts/finalization/recovery, searchable lazy history, restart restoration, rename, pin, delete, bounded provenance-preserving Markdown export, independent branches, retry-into-branch, and persisted exact rolling-window reports connected end to end. User desktop acceptance on 2026-07-15 confirmed branch, retry, restart persistence, and prompt import. Immediate work is advanced selector fit behavior, followed by multi-layer prompt composition, incremental draft checkpoints/history pagination, and the verified catalog.
 
 ## Dependency Map
 
@@ -84,7 +84,7 @@ Dependencies: shared preparation. It can be built alongside step 1.
 - Launch by canonical executable path with fixed argument arrays and an allow-listed environment. Completed; the API key is environment-only and no shell is used.
 - Reserve loopback port `0`, authenticate/identify the owned server, poll health with a bounded timeout, and never kill another process by name or port. Completed with a wrong-key challenge plus authenticated `/props` model/build checks.
 - Implement explicit transitions through installed, starting, loading, ready, busy, stopping, stopped, crashed, and error states. Process-backed states are implemented; busy awaits generation and recovering awaits crash policy.
-- Guarantee `stop_all` on application exit and add deterministic process tests for successful exit, log redaction, crash, timeout/force-stop, owned probes, and shutdown. An ignored environment-selected real-model load/stream/stop/no-orphan test is complete; a redistributable fixture plus load-cancel/crash cases remain.
+- Guarantee `stop_all` on application exit and add deterministic process tests for successful exit, log redaction, crash, timeout/force-stop, owned probes, and shutdown. An ignored environment-selected real-model load/count/stream/cancel/stop/no-orphan test is complete; a redistributable fixture plus load-cancel/crash cases remain.
 
 ### Acceptance gate
 
@@ -150,7 +150,7 @@ Status: completed on 2026-07-15 for the selected user-prompt layer. Migration 4,
 
 Dependencies: steps 2, 4, and 5 plus working event sequencing.
 
-Basic streaming status: completed on 2026-07-14, with context visibility, immutable system-prompt compilation, history restoration, and retry-into-branch added on 2026-07-15. Rust owns the authenticated llama.cpp transport, validates bounded messages/output limits, parses bounded SSE data, batches sequenced token events, persists user/draft records before inference, finalizes exact streamed text/usage/terminal state, and cancels one active generation. Chat renders the live turn and presents exact or explicitly approximate usage. Enforced context management, OOM fallback, and engine crash recovery remain before the full acceptance gate is complete.
+Basic streaming status: completed on 2026-07-14, with immutable system-prompt compilation, history restoration, retry-into-branch, and exact rolling context admission added by 2026-07-15. Rust owns the authenticated llama.cpp transport, obtains authoritative chat-template-aware input counts, reserves output and safety capacity, keeps mandatory/current content plus newest complete turns, persists the admission report, parses bounded SSE data, batches sequenced events, finalizes exact streamed text/usage/terminal state, and cancels one active generation. Chat renders live kept/omitted context totals and completion usage. OOM fallback and engine crash recovery remain before the full acceptance gate is complete.
 
 ### Backend
 
@@ -158,7 +158,7 @@ Basic streaming status: completed on 2026-07-14, with context visibility, immuta
 - Compile the selected system-prompt version and conversation messages into the model's chat template without hidden personality text.
 - Stream token chunks through `chat://token` envelopes containing conversation ID, message ID, job ID, and sequence. Batch small chunks on a short interval to protect renderer performance.
 - Emit state, usage, completion, cancellation, and structured error events. Ignore or reject stale job IDs and guarantee a single terminal event.
-- Enforce output/context limits and bounded request sizes. Add explicit cancellation and a conservative one-time OOM fallback only after the basic path is reliable.
+- Enforce output/context limits and bounded request sizes. Exact rolling admission and explicit cancellation are complete; add a conservative one-time OOM fallback only after advanced fit estimates are reliable.
 
 ### Frontend
 
@@ -174,7 +174,7 @@ Basic streaming status: completed on 2026-07-14, with context visibility, immuta
 
 Dependencies: step 6 contracts, step 4 model identity, and step 5 prompt-version identity. Implement the repository before declaring streaming chat complete so messages are crash recoverable.
 
-Branch/retry status: connected and user-accepted on 2026-07-15. Migrations 5-6, repository/service ownership, transactional user/draft creation, deterministic message positions and parent links, terminal content/usage/state finalization, startup interruption recovery, list/page/search/open/rename/pin/delete/export/branch commands, lazy history UI, immutable binding restoration, compact drawer behavior, bounded Markdown provenance export, and cascade/foreign-key tests are implemented. Message controls create independent branches through a selected turn; Retry branches before the preceding user turn and regenerates there with the copied output-token setting. The user's desktop run confirmed both actions and restart persistence. Incremental draft checkpoints and UI pagination beyond the first 50 summaries remain before the full Step 7 acceptance gate.
+Branch/retry status: connected and user-accepted on 2026-07-15. Migrations 5-7, repository/service ownership, transactional user/draft creation, deterministic message positions and parent links, terminal content/usage/state finalization, startup interruption recovery, list/page/search/open/rename/pin/delete/export/branch commands, persisted exact context reports, lazy history UI, immutable binding restoration, compact drawer behavior, bounded Markdown provenance export, and cascade/foreign-key tests are implemented. Message controls create independent branches through a selected turn; Retry branches before the preceding user turn and regenerates there with the copied output-token setting. The user's desktop run confirmed both actions and restart persistence. Incremental draft checkpoints and UI pagination beyond the first 50 summaries remain before the full Step 7 acceptance gate.
 
 - Add `ConversationRepository` and `MessageRepository` using the existing tables, with explicit transactions for conversation creation, user messages, assistant draft/finalization, branch parentage, and timestamps.
 - Persist the user message before launching generation. Create an assistant draft tied to the job, append/finalize in bounded checkpoints or persist a final content record, and mark interrupted drafts on startup.
@@ -206,9 +206,9 @@ Dependencies: step 1 import pipeline, step 3 metadata validation, the verified d
 ## Recommended Checkpoints
 
 1. **Model library checkpoint (completed 2026-07-13):** shared preparation + local discovery/import + basic GGUF metadata.
-2. **Runtime checkpoint (completed 2026-07-14 for CPU):** verified llama.cpp install + lifecycle/logging + real Qwen load/stream/stop/no-orphan validation.
+2. **Runtime checkpoint (completed 2026-07-15 for CPU):** verified llama.cpp install + lifecycle/logging + real Qwen load/count/stream/cancel/stop/no-orphan validation.
 3. **Prompt checkpoint (completed 2026-07-15):** secure Markdown/text import, immutable versioning, management workspace, adjacent selector, and ephemeral Chat binding.
-4. **Chat persistence checkpoint (in progress):** durable conversations, restart recovery, provenance-preserving Markdown export, branches, and retry-into-branch are complete; enforced context management, incremental draft checkpoints, history pagination, and engine crash recovery remain.
+4. **Chat persistence checkpoint (in progress):** durable conversations, restart recovery, provenance-preserving Markdown export, branches, retry-into-branch, and exact rolling context management are complete; incremental draft checkpoints, history pagination, and engine crash recovery remain.
 5. **Catalog checkpoint:** signed metadata + resumable verified downloads.
 
 At every checkpoint run frontend build/tests, Rust format/check/test/clippy, migration tests from empty and prior schemas, fake-engine lifecycle tests where applicable, and a Tauri debug smoke test. Do not move to the next checkpoint with orphaned processes, destructive migration changes, unbounded file reads, or renderer-owned native/network access.

@@ -6,7 +6,7 @@ function message(
   content: string,
   usage: ChatMetricMessage["usage"] = null,
 ): ChatMetricMessage {
-  return { role, content, usage };
+  return { role, content, usage, context: null };
 }
 
 describe("chat metrics", () => {
@@ -53,5 +53,58 @@ describe("chat metrics", () => {
     expect(metrics.contextTokens).toBe(120);
     expect(metrics.contextApproximate).toBe(true);
     expect(metrics.contextPercent).toBe(3);
+  });
+
+  it("uses the exact admitted rolling window after older history is omitted", () => {
+    const assistant = message(
+      "assistant",
+      "Fresh answer",
+      { promptTokens: 2800, outputTokens: 120, tokensPerSecond: 18 },
+    );
+    assistant.context = {
+      strategy: "rolling_window",
+      contextCapacity: 4096,
+      inputTokenBudget: 3040,
+      inputTokens: 2800,
+      reservedOutputTokens: 1024,
+      safetyTokens: 32,
+      retainedHistoryMessages: 8,
+      omittedHistoryMessages: 6,
+      approximate: false,
+    };
+    const metrics = calculateChatMetrics([assistant], 8192);
+
+    expect(metrics.contextTokens).toBe(2920);
+    expect(metrics.contextCapacity).toBe(4096);
+    expect(metrics.contextApproximate).toBe(false);
+    expect(metrics.contextPercent).toBe(71);
+  });
+
+  it("does not reuse a previous context report while the next turn is pending", () => {
+    const previousAssistant = message(
+      "assistant",
+      "Previous answer",
+      { promptTokens: 100, outputTokens: 10, tokensPerSecond: 12 },
+    );
+    previousAssistant.context = {
+      strategy: "rolling_window",
+      contextCapacity: 4096,
+      inputTokenBudget: 3040,
+      inputTokens: 100,
+      reservedOutputTokens: 1024,
+      safetyTokens: 32,
+      retainedHistoryMessages: 0,
+      omittedHistoryMessages: 0,
+      approximate: false,
+    };
+
+    const metrics = calculateChatMetrics([
+      previousAssistant,
+      message("user", "Next question"),
+      message("assistant", ""),
+    ], 4096);
+
+    expect(metrics.contextTokens).toBeGreaterThan(110);
+    expect(metrics.contextApproximate).toBe(true);
   });
 });

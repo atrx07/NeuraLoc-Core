@@ -11,6 +11,7 @@ import {
   Gauge,
   GitBranch,
   ImagePlus,
+  Layers3,
   LoaderCircle,
   PanelLeft,
   Pencil,
@@ -96,6 +97,7 @@ export function ChatWorkspace() {
   const tokenSequences = useRef(new Map<string, number>());
   const stateSequences = useRef(new Map<string, number>());
   const usageSequences = useRef(new Map<string, number>());
+  const contextSequences = useRef(new Map<string, number>());
   const messageViewport = useRef<HTMLDivElement | null>(null);
   const autoScrollToBottom = useRef(true);
   const previousView = useRef(activeView);
@@ -225,6 +227,14 @@ export function ChatWorkspace() {
         ? { ...message, usage: event.usage }
         : message));
     }).then(keep);
+    void bridge.onChatContext((event, sequence) => {
+      const previous = contextSequences.current.get(event.jobId) ?? 0;
+      if (sequence <= previous) return;
+      contextSequences.current.set(event.jobId, sequence);
+      setMessages((current) => current.map((message) => message.id === event.messageId
+        ? { ...message, context: event.context }
+        : message));
+    }).then(keep);
 
     return () => {
       disposed = true;
@@ -259,6 +269,10 @@ export function ChatWorkspace() {
       selectedPrompt?.estimatedTokens ?? 0,
     ),
     [messages, runtimeActive, runtimeStatus?.contextSize, selectedPrompt?.estimatedTokens],
+  );
+  const latestContext = useMemo(
+    () => [...messages].reverse().find((message) => message.role === "assistant")?.context ?? null,
+    [messages],
   );
 
   async function openConversation(summary: ConversationSummary) {
@@ -465,6 +479,7 @@ export function ChatWorkspace() {
       content,
       state: "complete",
       usage: null,
+      context: null,
       terminalReason: null,
     };
     const assistantMessage: LocalMessage = {
@@ -473,6 +488,7 @@ export function ChatWorkspace() {
       content: "",
       state: "pending",
       usage: null,
+      context: null,
       terminalReason: null,
     };
     const history = generationHistory(targetMessages);
@@ -487,6 +503,7 @@ export function ChatWorkspace() {
     tokenSequences.current.delete(jobId);
     stateSequences.current.delete(jobId);
     usageSequences.current.delete(jobId);
+    contextSequences.current.delete(jobId);
     try {
       const result = await bridge.startChatGeneration({
         jobId,
@@ -503,6 +520,7 @@ export function ChatWorkspace() {
             ...message,
             state: messageState(result.state),
             usage: result.usage ?? message.usage,
+            context: result.context,
           }
         : message));
     } catch (caught) {
@@ -753,10 +771,15 @@ export function ChatWorkspace() {
                   ? <div className="message-terminal error">Generation failed</div>
                   : <div className="message-pending"><LoaderCircle className="spin" size={14} /> Thinking locally</div>}
             {message.state !== "pending" && message.state !== "streaming" && <footer className="message-footer">
-              {message.usage && <div className="message-usage">
-                <span>{message.usage.outputTokens.toLocaleString()} output</span>
-                <span>{message.usage.promptTokens.toLocaleString()} prompt</span>
-                <span>{message.usage.tokensPerSecond > 0 ? `${message.usage.tokensPerSecond.toFixed(1)} tok/s` : "Speed unavailable"}</span>
+              {(message.usage || message.context?.omittedHistoryMessages) && <div className="message-usage">
+                {message.usage && <>
+                  <span>{message.usage.outputTokens.toLocaleString()} output</span>
+                  <span>{message.usage.promptTokens.toLocaleString()} prompt</span>
+                  <span>{message.usage.tokensPerSecond > 0 ? `${message.usage.tokensPerSecond.toFixed(1)} tok/s` : "Speed unavailable"}</span>
+                </>}
+                {!!message.context?.omittedHistoryMessages && <span title="Older messages remain in history but were outside this inference window">
+                  {message.context.omittedHistoryMessages.toLocaleString()} history omitted
+                </span>}
               </div>}
               <div aria-label="Message actions" className="message-actions">
                 <button
@@ -794,11 +817,20 @@ export function ChatWorkspace() {
           />
           <small>{chatMetrics.contextPercent === null ? "--" : `${chatMetrics.contextPercent}%`}</small>
         </div>
+        <div className="context-window-route" title={latestContext
+          ? `Exact model-tokenized rolling window: ${latestContext.retainedHistoryMessages} history messages retained, ${latestContext.omittedHistoryMessages} omitted, ${latestContext.reservedOutputTokens} output tokens reserved`
+          : "Newest complete turns are retained when the loaded model context fills"}>
+          <Layers3 size={13} />
+          <span>Window</span>
+          <strong>{latestContext
+            ? `${latestContext.retainedHistoryMessages} kept / ${latestContext.omittedHistoryMessages} omitted`
+            : "Rolling"}</strong>
+        </div>
         <div title="Current generation state"><Activity size={13} /><span>{generating ? "Generating" : modelOperation === "load" ? "Loading" : modelReady ? "Ready" : "Idle"}</span></div>
         <div title="Tokens in the latest response"><span>Output</span><strong>{tokenMetric(chatMetrics.outputTokens, chatMetrics.outputApproximate)}</strong></div>
         {activeBranchSourceId && <div title="This conversation is an independent durable branch"><GitBranch size={13} /><span>Branch</span></div>}
         <div className="prompt-route" title="Immutable system prompt bound to this conversation"><FileText size={13} /><span>Prompt</span><strong>{selectedPrompt ? `${selectedPrompt.stableName} v${selectedPrompt.version}` : "None"}</strong></div>
-        <div title="Latest measured generation speed"><span>Speed</span><strong>{chatMetrics.tokensPerSecond && chatMetrics.tokensPerSecond > 0 ? `${chatMetrics.tokensPerSecond.toFixed(1)} tok/s` : "--"}</strong></div>
+        <div className="speed-status" title="Latest measured generation speed"><span>Speed</span><strong>{chatMetrics.tokensPerSecond && chatMetrics.tokensPerSecond > 0 ? `${chatMetrics.tokensPerSecond.toFixed(1)} tok/s` : "--"}</strong></div>
         <div className="runtime-route" title="Active inference route and backend build"><Cpu size={13} /><span>{runtimeActive ? `CPU / ${runtimeStatus?.backendVersion ?? "llama.cpp"}` : "CPU / offline"}</span></div>
       </div>
 

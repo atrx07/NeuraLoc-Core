@@ -1,6 +1,7 @@
 import type {
   ChatMessageInput,
   ChatUsage,
+  ContextWindowReport,
   ConversationMessage,
   ConversationSummary,
 } from "../../types/domain";
@@ -13,6 +14,7 @@ export interface LocalMessage {
   content: string;
   state: LocalMessageState;
   usage: ChatUsage | null;
+  context: ContextWindowReport | null;
   terminalReason: string | null;
 }
 
@@ -44,6 +46,7 @@ export function localMessagesFromConversation(messages: ConversationMessage[]): 
         interrupted: "interrupted",
       }[message.state] as LocalMessageState,
       usage: message.usage,
+      context: message.context,
       terminalReason: message.terminalReason,
     }));
 }

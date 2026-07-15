@@ -27,6 +27,7 @@ use super::traits::{
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(2);
+const TOKEN_COUNT_TIMEOUT: Duration = Duration::from_secs(15);
 const GENERATION_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_HTTP_BODY_BYTES: usize = 1024 * 1024;
 const MAX_CHAT_REQUEST_BYTES: usize = 1024 * 1024;
@@ -71,6 +72,7 @@ pub(crate) struct LlamaCppSnapshot {
 pub struct LlamaCppEngine {
     processes: Arc<ProcessManager>,
     client: Client,
+    token_client: Client,
     generation_client: Client,
     state: Mutex<AdapterState>,
     active_jobs: Mutex<HashMap<String, watch::Sender<bool>>>,
@@ -100,9 +102,21 @@ impl LlamaCppEngine {
                     "the llama.cpp generation client could not start: {error}"
                 ))
             })?;
+        let token_client = Client::builder()
+            .no_proxy()
+            .connect_timeout(HTTP_TIMEOUT)
+            .timeout(TOKEN_COUNT_TIMEOUT)
+            .redirect(redirect::Policy::none())
+            .build()
+            .map_err(|error| {
+                AppError::Engine(format!(
+                    "the llama.cpp token-count client could not start: {error}"
+                ))
+            })?;
         Ok(Self {
             processes,
             client,
+            token_client,
             generation_client,
             state: Mutex::new(AdapterState::default()),
             active_jobs: Mutex::new(HashMap::new()),
@@ -588,6 +602,52 @@ impl InferenceEngine for LlamaCppEngine {
 
 #[async_trait]
 impl ChatEngine for LlamaCppEngine {
+    async fn count_tokens(&self, messages_json: &str) -> AppResult<u64> {
+        let session = self
+            .state
+            .lock()
+            .await
+            .session
+            .clone()
+            .ok_or_else(|| AppError::Engine("there is no loaded llama.cpp model".into()))?;
+        let summary = self
+            .processes
+            .summary(&session.process_id)
+            .await
+            .ok_or_else(|| AppError::Engine("the llama.cpp process is unavailable".into()))?;
+        if summary.state != EngineLifecycle::Ready {
+            return Err(AppError::Engine(
+                "the llama.cpp model session is not ready for token counting".into(),
+            ));
+        }
+
+        let response = self
+            .token_client
+            .post(format!(
+                "{}/v1/chat/completions/input_tokens",
+                session.endpoint
+            ))
+            .bearer_auth(&session.api_key)
+            .header(CONTENT_TYPE, "application/json")
+            .body(build_token_count_payload(messages_json)?)
+            .send()
+            .await
+            .map_err(|error| {
+                AppError::Engine(format!("llama.cpp token counting failed: {error}"))
+            })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = bounded_body(response).await?;
+            let detail = String::from_utf8_lossy(&body).trim().to_owned();
+            return Err(AppError::Engine(if detail.is_empty() {
+                format!("llama.cpp token counting returned HTTP {status}")
+            } else {
+                format!("llama.cpp token counting returned HTTP {status}: {detail}")
+            }));
+        }
+        parse_token_count(&bounded_body(response).await?)
+    }
+
     async fn generate(&self, request: ChatRequest, sink: TokenSink) -> AppResult<Usage> {
         if request.job_id.trim().is_empty() || request.job_id.len() > 128 {
             return Err(AppError::Engine("the chat job ID is invalid".into()));
@@ -741,6 +801,46 @@ fn build_chat_payload(request: &ChatRequest) -> AppResult<Vec<u8>> {
         ));
     }
     Ok(payload)
+}
+
+fn build_token_count_payload(messages_json: &str) -> AppResult<Vec<u8>> {
+    let messages: Value = serde_json::from_str(messages_json).map_err(|error| {
+        AppError::Engine(format!("the chat message payload is invalid: {error}"))
+    })?;
+    if !messages.is_array() {
+        return Err(AppError::Engine(
+            "the chat message payload must be an array".into(),
+        ));
+    }
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "model": "local-model",
+        "messages": messages,
+        "chat_template_kwargs": { "enable_thinking": false }
+    }))
+    .map_err(|error| {
+        AppError::Engine(format!(
+            "the token-count request could not be encoded: {error}"
+        ))
+    })?;
+    if payload.len() > MAX_CHAT_REQUEST_BYTES {
+        return Err(AppError::Engine(
+            "the token-count request exceeds the 1 MiB transport limit".into(),
+        ));
+    }
+    Ok(payload)
+}
+
+fn parse_token_count(body: &[u8]) -> AppResult<u64> {
+    let response: Value = serde_json::from_slice(body).map_err(|error| {
+        AppError::Engine(format!(
+            "llama.cpp returned an invalid token count: {error}"
+        ))
+    })?;
+    response
+        .get("input_tokens")
+        .and_then(Value::as_u64)
+        .filter(|count| *count <= 1_048_576)
+        .ok_or_else(|| AppError::Engine("llama.cpp returned an invalid input token count".into()))
 }
 
 fn update_usage(event: &Value, usage: &mut Usage) {
@@ -1047,6 +1147,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn builds_and_parses_exact_token_count_requests() {
+        let payload = build_token_count_payload(
+            &serde_json::json!([{"role": "user", "content": "Hello"}]).to_string(),
+        )
+        .unwrap();
+        let payload: Value = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(
+            payload.pointer("/chat_template_kwargs/enable_thinking"),
+            Some(&Value::Bool(false))
+        );
+        assert_eq!(
+            payload
+                .pointer("/messages/0/content")
+                .and_then(Value::as_str),
+            Some("Hello")
+        );
+        assert_eq!(parse_token_count(br#"{"input_tokens":42}"#).unwrap(), 42);
+        assert!(parse_token_count(br#"{"tokens":42}"#).is_err());
+    }
+
     #[tokio::test]
     #[ignore = "requires NEURALOC_TEST_LLAMA_SERVER and NEURALOC_TEST_GGUF"]
     async fn loads_streams_and_stops_a_real_local_model() {
@@ -1078,6 +1199,14 @@ mod tests {
             .unwrap();
         assert!(engine.health().await.unwrap().ready);
 
+        let smoke_messages = serde_json::json!([{
+            "role": "user",
+            "content": "Reply with the exact text NEURALOC_OK and nothing else."
+        }])
+        .to_string();
+        let input_tokens = engine.count_tokens(&smoke_messages).await.unwrap();
+        assert!(input_tokens > 0 && input_tokens < 768);
+
         let (sink, mut tokens) = tokio::sync::mpsc::channel(32);
         let generation_engine = Arc::clone(&engine);
         let generation = tokio::spawn(async move {
@@ -1085,11 +1214,7 @@ mod tests {
                 .generate(
                     ChatRequest {
                         job_id: "real-model-smoke".into(),
-                        messages_json: serde_json::json!([{
-                            "role": "user",
-                            "content": "Reply with the exact text NEURALOC_OK and nothing else."
-                        }])
-                        .to_string(),
+                        messages_json: smoke_messages,
                         max_output_tokens: 256,
                     },
                     sink,
@@ -1119,7 +1244,7 @@ mod tests {
                             "content": "Write a long numbered list of one thousand items."
                         }])
                         .to_string(),
-                        max_output_tokens: 4_096,
+                        max_output_tokens: 512,
                     },
                     sink,
                 )

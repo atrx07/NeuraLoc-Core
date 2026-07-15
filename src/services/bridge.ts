@@ -4,6 +4,7 @@ import { confirm, open } from "@tauri-apps/plugin-dialog";
 import type {
   AppSettings,
   AppSnapshot,
+  ChatContextEvent,
   ChatGenerationResult,
   ChatStateEvent,
   ChatTokenBatch,
@@ -242,6 +243,15 @@ export const bridge = {
   ): Promise<UnlistenFn> {
     if (!isTauri()) return () => undefined;
     return listen<EventEnvelope<ChatUsageEvent>>("chat://usage", (event) => {
+      callback(event.payload.payload, event.payload.sequence);
+    });
+  },
+
+  async onChatContext(
+    callback: (context: ChatContextEvent, sequence: number) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri()) return () => undefined;
+    return listen<EventEnvelope<ChatContextEvent>>("chat://context", (event) => {
       callback(event.payload.payload, event.payload.sequence);
     });
   },
@@ -601,7 +611,7 @@ function demoConversationSummary(): ConversationSummary {
     promptVersionId: "demo-prompt-version-2",
     promptName: "Local code reviewer",
     promptVersion: 2,
-    contextStrategy: "full_history",
+    contextStrategy: "rolling_window",
     pinned: true,
     messageCount: 2,
     sourceConversationId: null,
@@ -631,6 +641,7 @@ function demoConversationDetail(): ConversationDetail {
         jobId: null,
         tokenCount: null,
         usage: null,
+        context: null,
         terminalReason: null,
         position: 1,
         createdAt: summary.createdAt,
@@ -647,6 +658,17 @@ function demoConversationDetail(): ConversationDetail {
         jobId: "demo-job",
         tokenCount: 14,
         usage: { promptTokens: 32, outputTokens: 14, tokensPerSecond: 18.4 },
+        context: {
+          strategy: "rolling_window",
+          contextCapacity: 4096,
+          inputTokenBudget: 3040,
+          inputTokens: 32,
+          reservedOutputTokens: 1024,
+          safetyTokens: 32,
+          retainedHistoryMessages: 0,
+          omittedHistoryMessages: 0,
+          approximate: false,
+        },
         terminalReason: "completed",
         position: 2,
         createdAt: summary.updatedAt,

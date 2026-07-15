@@ -90,7 +90,7 @@ The UI identifies the source of every effective setting. Prompt recommendations 
 
 ## Token estimation
 
-The selected model's tokenizer is authoritative when available. Before an engine is loaded, NeuraLoc-Core uses a family-specific tokenizer package or labels a conservative character-based estimate as approximate. The context manager reserves output and tool-result space before admitting history.
+The loaded model's llama.cpp tokenizer is authoritative: Chat requests an authenticated, chat-template-aware exact count before generation. The rolling context manager reserves requested output and safety space, preserves the system/current-user messages, and admits newest complete turns without deleting durable history. Before an engine is loaded, NeuraLoc-Core labels its conservative character-based preview as approximate.
 
 ## Parsing and validation tests
 

@@ -136,6 +136,8 @@ React state is split into UI session state, persisted user settings, and server-
 
 The mounted Chat workspace holds the active renderer view, while Rust owns the durable conversation record. `start_chat_generation` transactionally creates the conversation plus user message and assistant draft before inference, accumulates the exact streamed assistant text, and finalizes content, usage, and terminal state before emitting completion. Startup marks any remaining drafts as interrupted. The selected model and immutable prompt version are conversation bindings; the history UI loads their records lazily instead of placing all message content in global state. Conversation export is also Rust-owned: it reads the durable record, emits a bounded Markdown transcript, and embeds structured model, prompt, context, and generation-setting provenance. Branching transactionally copies a selected prefix into a new conversation, assigns new message IDs, remaps parent links, clears historical job IDs, and records source provenance. The renderer opens that independent copy immediately; Retry derives the preceding user turn, branches before it, restores the currently supported copied output-token setting, and regenerates only in the new branch. Source deletion nulls provenance links but cannot cascade into the independent branch.
 
+Context admission is also Rust-owned. For each generation, the llama.cpp adapter posts the same model, messages, and bounded chat-template kwargs to the authenticated `/v1/chat/completions/input_tokens` endpoint. The rolling policy reserves requested output plus a fixed safety margin, always keeps the optional system message and current user message, then admits the newest complete historical turns that fit. It never deletes or rewrites durable transcript messages. The exact capacity/input/retained/omitted decision is stored in the assistant message's `context_json`, returned by `start_chat_generation`, and emitted early through the sequenced `chat://context` stream.
+
 ## SQLite schema
 
 SQLite runs in WAL mode with foreign keys enabled and a busy timeout. Large files stay outside the database.
@@ -227,7 +229,8 @@ CREATE TABLE messages (
   terminal_reason TEXT,
   position INTEGER,
   updated_at TEXT,
-  source_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL
+  source_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
+  context_json TEXT
 );
 
 CREATE TABLE downloads (
@@ -307,7 +310,7 @@ Commands are versioned at the Rust type level. Breaking payload changes create a
 | `start_engine` | model ID, optional context/threads | ready engine status |
 | `stop_engine` | engine session ID | final engine status |
 | `get_engine_logs` | engine session ID | bounded redacted log snapshot |
-| `start_chat_generation` | job/conversation/user/assistant/session IDs, prompt version, bounded messages, output limit | durable draft/final state plus non-thinking streamed text and usage |
+| `start_chat_generation` | job/conversation/user/assistant/session IDs, prompt version, bounded messages, output limit | durable draft/final state plus exact rolling context report, non-thinking streamed text, and usage |
 | `cancel_chat_generation` | job ID | cancellation accepted |
 | `submit_job` | typed job request | job ID |
 | `cancel_job` | job ID | accepted/current state |
@@ -338,6 +341,7 @@ Events use `{ eventVersion, sequence, emittedAt, payload }` envelopes. Model sca
 - `job://state-changed`
 - `job://progress`
 - `model://scan-progress`
+- `chat://context`
 - `chat://token`
 - `chat://usage`
 - `chat://state-changed`
@@ -368,4 +372,4 @@ Adapters reserve a loopback port by binding port `0`, retaining the listener unt
 
 ## Testing architecture
 
-Unit tests cover pure policy and parsing. Integration tests launch copied deterministic executables for bounded logs, probes, natural exit, crash, and forced stop. One ignored network test downloads the official pinned package and verifies its real build output and file lifecycle. A second ignored environment-selected test loads a real tensor-bearing GGUF, checks health, requires a known visible answer with model thinking disabled, streams usage, cancels a second active request, stops the server, and asserts that no owned child remains; it passed locally with Qwen3 4B Q4_K_M on 2026-07-14. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database. A small redistributable tensor-bearing GGUF is still needed before real-model coverage can run in normal CI.
+Unit tests cover pure policy and parsing, including newest-complete-turn context selection and persisted exact admission reports. Integration tests launch copied deterministic executables for bounded logs, probes, natural exit, crash, and forced stop. One ignored network test downloads the official pinned package and verifies its real build output and file lifecycle. A second ignored environment-selected test loads a real tensor-bearing GGUF, checks health, requires an exact chat-template-aware token count and known visible answer with model thinking disabled, streams usage, cancels a second active request, stops the server, and asserts that no owned child remains; it passed locally with Qwen3 4B Q4_K_M on 2026-07-15. Hardware probes support injected fixtures so CI does not require a GPU or NPU. Database tests use temporary files and run every migration from an empty and previous-version database. A small redistributable tensor-bearing GGUF is still needed before real-model coverage can run in normal CI.

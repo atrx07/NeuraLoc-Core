@@ -1,9 +1,10 @@
-import type { ChatUsage } from "../../types/domain";
+import type { ChatUsage, ContextWindowReport } from "../../types/domain";
 
 export interface ChatMetricMessage {
   role: "user" | "assistant";
   content: string;
   usage: ChatUsage | null;
+  context: ContextWindowReport | null;
 }
 
 export interface ChatMetrics {
@@ -21,31 +22,40 @@ export function calculateChatMetrics(
   contextCapacity: number | null,
   systemPromptTokens = 0,
 ): ChatMetrics {
+  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const latestContextMessage = latestAssistant?.context ? latestAssistant : undefined;
+  const latestContext = latestContextMessage?.context ?? null;
   const latestUsageIndex = findLatestUsageIndex(messages);
   const latestUsage = latestUsageIndex >= 0 ? messages[latestUsageIndex].usage : null;
   const unmeasuredMessages = messages.slice(latestUsageIndex + 1);
   const unmeasuredTokens = estimateTokenCount(
     unmeasuredMessages.map((message) => message.content).join("\n"),
   );
-  const contextTokens = latestUsage
-    ? latestUsage.promptTokens + latestUsage.outputTokens + unmeasuredTokens
-    : messages.length > 0 || systemPromptTokens > 0
-      ? systemPromptTokens + estimateTokenCount(messages.map((message) => message.content).join("\n"))
-      : null;
-  const contextApproximate = contextTokens !== null
-    && (latestUsage === null || unmeasuredMessages.length > 0);
-  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const windowOutputTokens = latestContextMessage
+    ? latestContextMessage.usage?.outputTokens ?? estimateTokenCount(latestContextMessage.content)
+    : 0;
+  const contextTokens = latestContext
+    ? latestContext.inputTokens + windowOutputTokens
+    : latestUsage
+      ? latestUsage.promptTokens + latestUsage.outputTokens + unmeasuredTokens
+      : messages.length > 0 || systemPromptTokens > 0
+        ? systemPromptTokens + estimateTokenCount(messages.map((message) => message.content).join("\n"))
+        : null;
+  const contextApproximate = latestContextMessage
+    ? latestContextMessage.usage === null && latestContextMessage.content.length > 0
+    : contextTokens !== null && (latestUsage === null || unmeasuredMessages.length > 0);
   const outputTokens = latestAssistant
     ? latestAssistant.usage?.outputTokens ?? estimateTokenCount(latestAssistant.content)
     : null;
   const outputApproximate = latestAssistant !== undefined && latestAssistant.usage === null;
-  const contextPercent = contextTokens !== null && contextCapacity
-    ? Math.min(100, Math.round((contextTokens / contextCapacity) * 100))
+  const effectiveContextCapacity = latestContext?.contextCapacity ?? contextCapacity;
+  const contextPercent = contextTokens !== null && effectiveContextCapacity
+    ? Math.min(100, Math.round((contextTokens / effectiveContextCapacity) * 100))
     : null;
 
   return {
     contextTokens,
-    contextCapacity,
+    contextCapacity: effectiveContextCapacity,
     contextPercent,
     contextApproximate,
     outputTokens,

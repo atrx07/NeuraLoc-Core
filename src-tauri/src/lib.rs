@@ -1,5 +1,6 @@
 mod app_state;
 mod commands;
+mod context;
 mod conversations;
 mod engine_packages;
 mod engines;

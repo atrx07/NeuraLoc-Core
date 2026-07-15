@@ -17,11 +17,11 @@ Exit gate: frontend build/tests pass; Rust format, tests, and clippy pass on a R
 
 ## Phase 2: LLM Chat
 
-Status: in progress. Local GGUF indexing, verified CPU runtime lifecycle, bounded streaming/cancellation, usage/context telemetry, and durable conversations are implemented. The searchable history rail lazily restores exact messages/model/prompt bindings after restart and supports rename, pin, independent branches/retry, bounded Markdown export, and delete. Enforced context strategies, advanced model/session estimates, incremental draft checkpoints, pagination, and OOM recovery remain pending.
+Status: in progress. Local GGUF indexing, verified CPU runtime lifecycle, bounded streaming/cancellation, authoritative model-tokenized rolling context admission, and durable conversations are implemented. The searchable history rail lazily restores exact messages/model/prompt bindings and context reports after restart and supports rename, pin, independent branches/retry, bounded Markdown export, and delete. Advanced model/session estimates, model-template options, incremental draft checkpoints, pagination, crash recovery, and OOM recovery remain pending.
 
 - llama.cpp adapter, engine package installer, GGUF import/indexing.
 - Streaming chat, cancellation, conversation branches, exports.
-- Chat-template registry and context budget strategies.
+- Chat-template registry/options and exact rolling context budget strategies.
 - Model/session controls, memory estimates, and bounded OOM fallback.
 
 ## Phase 3: Prompt Library

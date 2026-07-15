@@ -37,7 +37,7 @@ The networked package integration remains opt-in and downloads only the pinned o
 cargo test --manifest-path src-tauri/Cargo.toml engine_packages::service::tests::installs_verifies_and_uninstalls_the_pinned_package -- --ignored --exact
 ```
 
-Real-model load/stream/stop validation is also opt-in. It uses existing local files, never modifies the selected GGUF, and leaves no server running:
+Real-model load/count/stream/cancel/stop validation is also opt-in. It uses existing local files, never modifies the selected GGUF, verifies the authenticated chat-token-count route before inference, and leaves no server running:
 
 ```powershell
 $env:NEURALOC_TEST_LLAMA_SERVER="C:\path\to\llama-server.exe"

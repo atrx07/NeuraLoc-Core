@@ -192,6 +192,10 @@ impl EngineRuntimeService {
         self.adapter.generate(request, sink).await
     }
 
+    pub async fn count_chat_tokens(&self, messages_json: &str) -> AppResult<u64> {
+        self.adapter.count_tokens(messages_json).await
+    }
+
     pub async fn cancel_generation(&self, job_id: &str) -> AppResult<()> {
         self.adapter.cancel(job_id).await
     }

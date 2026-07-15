@@ -81,6 +81,7 @@ pub trait InferenceEngine: Send + Sync {
 
 #[async_trait]
 pub trait ChatEngine: InferenceEngine {
+    async fn count_tokens(&self, messages_json: &str) -> AppResult<u64>;
     async fn generate(&self, request: ChatRequest, sink: TokenSink) -> AppResult<Usage>;
     async fn cancel(&self, job_id: &str) -> AppResult<()>;
 }
