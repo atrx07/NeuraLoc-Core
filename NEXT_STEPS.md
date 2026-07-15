@@ -6,7 +6,7 @@ This plan covers the next checkpoint only: a usable local GGUF chat path with mo
 
 Completed on 2026-07-13: shared model-library preparation, step 1 local discovery/import, and the basic bounded GGUF metadata portion of step 3. NeuraLoc-Core now has migration-backed model records, guarded native file/folder selection, recursive cancellable scans with sequenced progress events, path/file-identity deduplication, missing/invalid states, metadata-only removal, and a functional installed-model UI.
 
-Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, remembers the last choice, loads/switches/unloads the selected model, gates the composer on the matching ready session, streams sequenced token batches, cancels the active generation, and shows the loaded context capacity with exact completed-turn and explicitly approximate in-progress usage. Immediate next work is Step 5 prompt import/versioning and Step 7 conversation/message persistence, followed by enforced context strategies, advanced selector fit behavior, and the verified catalog.
+Step 2's CPU runtime gate and the basic Step 4/6 chat path are complete. On 2026-07-14 the concrete adapter loaded the user's Qwen3 4B Q4_K_M GGUF with pinned llama.cpp `b9986`, passed authenticated health/identity checks, streamed a bounded response with usage, cancelled a second request, stopped, and confirmed zero owned child processes. Chat now lists ready indexed models, remembers the last choice, loads/switches/unloads the selected model, gates the composer on the matching ready session, streams sequenced token batches, cancels the active generation, and shows the loaded context capacity with exact completed-turn and explicitly approximate in-progress usage. Step 5's secure prompt parser, immutable repository, migration, and typed command layer are complete. Immediate next work is the Prompt Library interface and immutable Chat prompt binding, then Step 7 conversation/message persistence, enforced context strategies, advanced selector fit behavior, and the verified catalog.
 
 ## Dependency Map
 
@@ -125,6 +125,8 @@ Basic selector status: completed on 2026-07-14. Chat is backed by persisted mode
 ## 5. System-Prompt Markdown Import and Selector
 
 Dependencies: shared repository/path work from step 1. Can run in parallel with steps 2 and 3.
+
+Backend status: completed on 2026-07-15. Migration 4, the bounded YAML 1.2 parser, path/dialog grant checks, immutable profile/version repository, duplicate/no-op detection, provenance, soft deletion, original/normalized export, exact-content compilation, and typed Tauri commands are implemented and covered by eight prompt tests. The Prompt Library interface and Chat selector/binding are the active slice.
 
 ### Import and persistence
 

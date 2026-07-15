@@ -25,6 +25,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "engine_packages",
         sql: include_str!("../../migrations/0003_engine_packages.sql"),
     },
+    Migration {
+        version: 4,
+        name: "prompt_library",
+        sql: include_str!("../../migrations/0004_prompt_library.sql"),
+    },
 ];
 
 pub fn run(connection: &mut Connection) -> AppResult<()> {
@@ -73,7 +78,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(count, 4);
     }
 
     #[test]
@@ -109,5 +114,15 @@ mod tests {
             )
             .unwrap();
         assert_eq!(engine_package_tables, 1);
+        let prompt_version_columns: Vec<String> = connection
+            .prepare("PRAGMA table_info(prompt_versions)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(prompt_version_columns.contains(&"raw_document".to_string()));
+        assert!(prompt_version_columns.contains(&"source_profile_id".to_string()));
+        assert!(prompt_version_columns.contains(&"source_version_id".to_string()));
     }
 }

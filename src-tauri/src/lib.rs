@@ -7,6 +7,7 @@ mod events;
 mod hardware;
 mod models;
 mod processes;
+mod prompts;
 mod scheduler;
 mod settings;
 mod storage;
@@ -53,6 +54,16 @@ pub fn run() {
             commands::model_commands::cancel_model_scan,
             commands::model_commands::reverify_model,
             commands::model_commands::remove_model_record,
+            commands::prompt_commands::list_prompts,
+            commands::prompt_commands::import_prompt,
+            commands::prompt_commands::create_prompt,
+            commands::prompt_commands::save_prompt,
+            commands::prompt_commands::get_prompt_version,
+            commands::prompt_commands::duplicate_prompt,
+            commands::prompt_commands::delete_prompt,
+            commands::prompt_commands::set_prompt_pinned,
+            commands::prompt_commands::export_prompt,
+            commands::prompt_commands::compile_prompt,
             commands::settings_commands::get_settings,
             commands::settings_commands::update_settings,
         ])

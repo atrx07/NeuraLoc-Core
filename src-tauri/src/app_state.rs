@@ -3,7 +3,8 @@ use std::{path::Path, sync::Arc};
 use crate::{
     engine_packages::EnginePackageService, engines::EngineRuntimeService, errors::AppResult,
     events::EventEmitter, hardware::HardwareService, models::ModelService,
-    processes::ProcessManager, settings::SettingsService, storage::Database,
+    processes::ProcessManager, prompts::PromptService, settings::SettingsService,
+    storage::Database,
 };
 
 pub struct AppState {
@@ -14,6 +15,7 @@ pub struct AppState {
     pub hardware: HardwareService,
     pub models: Arc<ModelService>,
     pub processes: Arc<ProcessManager>,
+    pub prompts: Arc<PromptService>,
     pub settings: SettingsService,
 }
 
@@ -43,6 +45,7 @@ impl AppState {
         )?);
         let models = Arc::new(ModelService::new(Arc::clone(&database)));
         let processes = Arc::new(ProcessManager::default());
+        let prompts = Arc::new(PromptService::new(Arc::clone(&database)));
         let engines = Arc::new(EngineRuntimeService::new(
             Arc::clone(&engine_packages),
             Arc::clone(&models),
@@ -58,6 +61,7 @@ impl AppState {
             hardware,
             models,
             processes,
+            prompts,
             settings,
         })
     }

@@ -127,6 +127,7 @@ Repositories own SQL and return domain records. Migrations are ordered, transact
 - `ProcessManager`
 - `Scheduler`
 - `SettingsService`
+- `PromptService`
 - engine registry
 - cancellation registry
 
@@ -154,7 +155,9 @@ CREATE TABLE prompt_profiles (
   stable_name TEXT NOT NULL,
   collection TEXT,
   pinned INTEGER NOT NULL DEFAULT 0,
-  deleted_at TEXT
+  deleted_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE prompt_versions (
@@ -165,6 +168,9 @@ CREATE TABLE prompt_versions (
   source_hash TEXT NOT NULL,
   front_matter_json TEXT NOT NULL,
   content TEXT NOT NULL,
+  raw_document TEXT NOT NULL,
+  source_profile_id TEXT REFERENCES prompt_profiles(id),
+  source_version_id TEXT REFERENCES prompt_versions(id),
   created_at TEXT NOT NULL,
   UNIQUE(profile_id, version),
   UNIQUE(profile_id, source_hash)

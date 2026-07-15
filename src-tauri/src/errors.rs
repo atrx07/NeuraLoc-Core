@@ -19,6 +19,12 @@ pub enum AppError {
     InvalidModel(String),
     #[error("The model record was not found: {0}")]
     ModelNotFound(String),
+    #[error("The system prompt is invalid: {0}")]
+    InvalidPrompt(String),
+    #[error("The prompt record was not found: {0}")]
+    PromptNotFound(String),
+    #[error("The record changed before the operation completed: {0}")]
+    Conflict(String),
     #[error("The engine package operation failed: {0}")]
     EnginePackage(String),
     #[error("The inference engine operation failed: {0}")]
@@ -70,6 +76,18 @@ impl From<AppError> for IpcError {
             AppError::ModelNotFound(_) => (
                 "model_not_found",
                 "Refresh the model library and try again.",
+            ),
+            AppError::InvalidPrompt(_) => (
+                "invalid_prompt",
+                "Review the prompt document and its YAML front matter, then try again.",
+            ),
+            AppError::PromptNotFound(_) => (
+                "prompt_not_found",
+                "Refresh the prompt library and try again.",
+            ),
+            AppError::Conflict(_) => (
+                "conflict",
+                "Refresh the record before creating another version.",
             ),
             AppError::EnginePackage(_) => (
                 "engine_package_error",

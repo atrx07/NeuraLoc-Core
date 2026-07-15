@@ -8,9 +8,9 @@ Current version: `0.1.0`
 
 ## Summary
 
-NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, and bounded chat generation, and renders a polished desktop shell with functional Chat, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
+NeuraLoc-Core is an executable local-chat prototype built with Tauri 2, React, TypeScript, and Rust. It starts, creates its application data directories and SQLite database, exposes typed commands for app state, hardware, settings, local models, engine packages, llama.cpp runtime control, bounded chat generation, and immutable system prompts, and renders a polished desktop shell with functional Chat, Hardware, Settings, and Model Manager views. The pinned Windows x64 CPU llama.cpp package can be installed and verified, and a ready indexed GGUF can be selected from Chat, launched, health-checked, streamed, cancelled, stopped, and inspected without exposing the internal server or session token to the renderer.
 
-This checkpoint is usable for ephemeral local chat, but it is not yet a complete local inference product. A local opt-in integration test loaded the user's Qwen3 4B Q4_K_M GGUF, authenticated the pinned `b9986` server, streamed a response with usage, cancelled a second active request, stopped the server, and confirmed zero owned child processes on 2026-07-14. The model file remains external and is not stored in the repository. Prompt import/selection, conversation persistence, context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
+This checkpoint is usable for ephemeral local chat, but it is not yet a complete local inference product. A local opt-in integration test loaded the user's Qwen3 4B Q4_K_M GGUF, authenticated the pinned `b9986` server, streamed a response with usage, cancelled a second active request, stopped the server, and confirmed zero owned child processes on 2026-07-14. The model file remains external and is not stored in the repository. The secure prompt import/versioning backend is complete; its management interface and Chat selector are not connected yet. Conversation persistence, context management, model-catalog download, image, speech, TTS, gallery, and the dedicated Logs workspace remain unfinished.
 
 ## Implemented Functionality
 
@@ -37,9 +37,12 @@ This checkpoint is usable for ephemeral local chat, but it is not yet a complete
 - Ordered transactional migration runner with a migration ledger, idempotency coverage, and an explicit version-1 upgrade test.
 - Additive migration 2 extends model records with verification state/error, bounded GGUF metadata JSON, modification time, and stable file identity.
 - Additive migration 3 adds engine-package identity, route, install path, archive checksum, installed-file inventory, state, source, errors, and install/verification timestamps.
-- Thread-safe `AppState` containing `Database`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, and `SettingsService` handles.
+- Additive migration 4 adds prompt profile timestamps, exact raw source documents, duplicate provenance, and prompt-library indexes without modifying the foundation migration.
+- Thread-safe `AppState` containing `Database`, `EnginePackageService`, `EngineRuntimeService`, `EventEmitter`, `HardwareService`, `ModelService`, `ProcessManager`, `PromptService`, and `SettingsService` handles.
 - Stable application and IPC error types with machine-readable error codes and user-facing suggestions.
 - Model repository/service and typed commands for list, import, recursive scan, cancellation, reverify, and record removal.
+- Prompt repository/service and typed commands for search/list, native-dialog import, create, immutable version save, historical version read, duplicate, pin, soft delete, original/normalized export, and exact-content compile.
+- Prompt parsing accepts bounded UTF-8 `.md`/`.txt` documents with an optional BOM and leading YAML 1.2 front matter, preserves source content and line endings, rejects aliases/anchors/custom tags/excessive nesting, validates known metadata, preserves unknown fields as inert JSON, and hashes canonical metadata plus exact content for no-op duplicate detection.
 - Engine-package repository/service and typed commands for status, online install, offline import, reverify, and uninstall.
 - Bundled manifest 1 pins llama.cpp `b9986` Windows x64 CPU to its official HTTPS asset, exact 18,245,837-byte size, SHA-256, route, architecture, and expected runtime files.
 - Online package installation is gated by `internetAccess`, limits redirects to approved GitHub HTTPS hosts, streams to `.partial`, enforces exact size/SHA-256, and removes the partial after success or failure.
@@ -144,7 +147,8 @@ NeuraLoc-Core/
     |-- migrations/
     |   |-- 0001_foundation.sql
     |   |-- 0002_model_library.sql
-    |   `-- 0003_engine_packages.sql
+    |   |-- 0003_engine_packages.sql
+    |   `-- 0004_prompt_library.sql
     |-- icons/                 # generated desktop/mobile icon bundle
     |-- gen/schemas/           # generated Tauri capability schemas
     `-- src/
@@ -160,6 +164,7 @@ NeuraLoc-Core/
         |   |-- engine_package_commands.rs
         |   |-- hardware_commands.rs
         |   |-- model_commands.rs
+        |   |-- prompt_commands.rs
         |   |-- settings_commands.rs
         |   `-- mod.rs
         |-- engines/
@@ -186,6 +191,13 @@ NeuraLoc-Core/
         |-- processes/
         |   |-- manager.rs
         |   |-- lifecycle.rs
+        |   `-- mod.rs
+        |-- prompts/
+        |   |-- parser.rs
+        |   |-- path_grants.rs
+        |   |-- repository.rs
+        |   |-- service.rs
+        |   |-- types.rs
         |   `-- mod.rs
         |-- scheduler/
         |   |-- job.rs
@@ -221,8 +233,9 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 - `src-tauri/migrations/0001_foundation.sql` is migration version 1, name `foundation`.
 - `src-tauri/migrations/0002_model_library.sql` is migration version 2, name `model_library`; version 1 remains unchanged.
 - `src-tauri/migrations/0003_engine_packages.sql` is migration version 3, name `engine_packages`; prior migration files remain unchanged.
+- `src-tauri/migrations/0004_prompt_library.sql` is migration version 4, name `prompt_library`; it adds profile timestamps, exact raw documents, duplicate provenance, and library indexes.
 - The runner creates `schema_migrations` defensively, checks each version, executes unapplied SQL in a transaction, then records the version and UTC timestamp.
-- Tests run all migrations twice and upgrade a simulated version-1 database, confirming three ledger rows, the new model columns, and the engine-package table.
+- Tests run all migrations twice and upgrade a simulated version-1 database, confirming four ledger rows, the model/package additions, and the prompt-library columns.
 
 ### Foundation schema
 
@@ -230,8 +243,8 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 | --- | --- | --- |
 | `schema_migrations` | Applied version, name, and timestamp | Active |
 | `settings` | JSON settings by stable key | Active through `get_setting`/`put_setting` |
-| `prompt_profiles` | Stable prompt identity, collection, pin, soft delete | Schema only |
-| `prompt_versions` | Immutable prompt content, hash, source, front matter, version | Schema only |
+| `prompt_profiles` | Stable prompt identity, collection, pin, soft delete, timestamps | Active through `PromptRepository`/`PromptService` |
+| `prompt_versions` | Immutable prompt content, hash, source, raw document, front matter, version, provenance | Active through `PromptRepository`/`PromptService` |
 | `models` | Local model identity, type, path, size, verification, GGUF metadata, file identity | Active through `ModelRepository`/`ModelService` |
 | `engine_packages` | Installed engine version/route/path, archive checksum, file inventory, state, errors, timestamps | Active through `EnginePackageRepository`/`EnginePackageService` |
 | `conversations` | Chat identity and selected model/prompt/settings | Schema only |
@@ -243,7 +256,7 @@ The database file is `neuraloc-core.db` inside the Tauri-resolved platform appli
 
 Foreign keys connect prompt versions to profiles, conversations to models/prompt versions, and messages to conversations/parents. Deleting a conversation cascades to its messages. Unique constraints prevent duplicate model paths, duplicate prompt versions/hashes, and duplicate output paths.
 
-Indexes exist for conversation recency, conversation messages, model kind, model verification state, unique non-null file identity, engine package state/route, download state/recency, output kind/recency, and benchmark lookup.
+Indexes exist for prompt library ordering/version history, conversation recency, conversation messages, model kind, model verification state, unique non-null file identity, engine package state/route, download state/recency, output kind/recency, and benchmark lookup.
 
 ## Existing Tauri Commands
 
@@ -272,6 +285,16 @@ Indexes exist for conversation recency, conversation messages, model kind, model
 | `cancel_model_scan` | scan ID | boolean | Signals a live discovery/import scan to stop |
 | `reverify_model` | model ID | `ModelRecord` | Refreshes file state/metadata or marks a missing record without deleting it |
 | `remove_model_record` | model ID | none | Removes SQLite metadata only; the GGUF file remains on disk |
+| `list_prompts` | optional search query | `PromptSummary[]` | Returns up to 200 active latest-version summaries, pinned and recently updated first |
+| `import_prompt` | granted absolute `.md`/`.txt` path | `PromptMutationOutcome` | Parses and creates a profile, appends a changed source as a version, or reports a hash no-op |
+| `create_prompt` | stable name and document | `PromptMutationOutcome` | Validates an authored document and creates immutable version 1 |
+| `save_prompt` | profile/base-version IDs and document | `PromptMutationOutcome` | Appends a version or rejects a stale base-version conflict |
+| `get_prompt_version` | version ID | `PromptVersionRecord` | Returns exact immutable content, metadata, source, raw document, and provenance, including soft-deleted history |
+| `duplicate_prompt` | version ID and optional name | `PromptMutationOutcome` | Creates a new profile with source profile/version provenance |
+| `set_prompt_pinned` | profile ID and pin state | `PromptSummary` | Updates library ordering metadata |
+| `delete_prompt` | profile ID | none | Soft-deletes the profile while retaining all historical versions |
+| `export_prompt` | version ID and original/normalized mode | `PromptExport` | Returns an exact original document or explicit normalized front matter plus content |
+| `compile_prompt` | version ID | `CompiledPrompt` | Returns exact system content with an explicitly approximate token estimate |
 
 `get_app_snapshot` currently reports `databaseReady: true` and `firstRunComplete: false` as fixed values. `activeJobs` reflects the active llama.cpp generation registry and the top bar follows chat terminal events. `runningEngines` is the number of owned processes, which may include future non-engine owned processes unless that accounting is refined.
 
@@ -298,7 +321,7 @@ npm.cmd run tauri -- build --debug --no-bundle
 Current automated tests:
 
 - Frontend: 4 Vitest files, 10 tests for adaptive byte formatting, missing telemetry, model metadata, selector grouping/labels, selected-session readiness, and exact/approximate chat context metrics.
-- Rust: 30 passing default tests plus two ignored opt-in integration tests. Coverage includes bounded chat request validation, non-thinking chat payloads, split SSE decoding, usage extraction, owned build probes, pinned-version parsing, fixed/bounded llama.cpp arguments, and `/props` model/build identity validation alongside the hardware, database, GGUF, model, process, and package suites.
+- Rust: 38 passing default tests plus two ignored opt-in integration tests. Coverage includes eight prompt parser/service tests for exact-content handling, malformed/unsafe YAML rejection, metadata bounds, deterministic hashes, immutable versions, stale edits, duplicate provenance, soft deletion, historical reads, exports, and compilation, alongside the chat, hardware, database, GGUF, model, process, and package suites.
 - Opt-in package integration: the ignored test downloads the pinned official archive, completes install, runs the real `llama-server.exe --version --help` probe and observes build `9986`, verifies the exact files, and uninstalls in a temporary application-data directory; it passed on 2026-07-13.
 - Opt-in real-model integration: an environment-selected `llama-server.exe` and tensor-bearing GGUF are loaded with the same adapter, health-checked, required to return a known visible answer with thinking disabled, usage-checked, cancellation-checked, stopped, and checked for zero owned child processes. It passed with Qwen3 4B Q4_K_M and `b9986` on 2026-07-14.
 
@@ -312,7 +335,7 @@ The verified unpackaged Windows debug executable is:
 C:\Users\atrx07\atrx\NeuraLoc-Core\src-tauri\target\debug\neuraloc-core.exe
 ```
 
-Checkpoint size: 29,459,456 bytes, rebuilt on 2026-07-15 after the chat context telemetry update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
+Checkpoint size: 30,436,864 bytes, rebuilt on 2026-07-15 after the Prompt Library backend update. This is a debug executable, not a signed installer or release artifact. `src-tauri/target` is ignored by Git and can be regenerated.
 
 ## Known Warnings and Limitations
 
