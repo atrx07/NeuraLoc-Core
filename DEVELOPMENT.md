@@ -1,5 +1,7 @@
 # Development
 
+Canonical repository: [atrx07/NeuraLoc-Core](https://github.com/atrx07/NeuraLoc-Core)
+
 ## Prerequisites
 
 - Windows 11

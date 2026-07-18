@@ -1,8 +1,10 @@
 # NeuraLoc-Core Status
 
-Status date: 2026-07-15
+Status date: 2026-07-18
 
 Project root: `C:\Users\atrx07\atrx\NeuraLoc-Core`
+
+Canonical repository: `https://github.com/atrx07/NeuraLoc-Core`
 
 Current version: `0.1.0`
 

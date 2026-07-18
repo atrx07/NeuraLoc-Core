@@ -2,6 +2,14 @@
   "name": "neuraloc-core",
   "private": true,
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atrx07/NeuraLoc-Core.git"
+  },
+  "homepage": "https://github.com/atrx07/NeuraLoc-Core#readme",
+  "bugs": {
+    "url": "https://github.com/atrx07/NeuraLoc-Core/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

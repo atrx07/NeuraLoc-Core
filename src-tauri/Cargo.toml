@@ -3,6 +3,7 @@ name = "neuraloc-core"
 version = "0.1.0"
 description = "Privacy-first local AI orchestration studio"
 authors = ["NeuraLoc-Core contributors"]
+repository = "https://github.com/atrx07/NeuraLoc-Core"
 edition = "2021"
 
 [lib]
