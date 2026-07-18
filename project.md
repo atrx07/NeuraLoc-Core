@@ -2,6 +2,15 @@
 
 NeuraLoc-Core is a privacy-first Windows desktop environment for running local AI workloads through proven native inference engines. The application is an orchestration and user-experience layer; it does not implement model inference itself.
 
+## Canonical naming
+
+- Product, display, and repository name: `NeuraLoc-Core`
+- Canonical repository: `https://github.com/atrx07/NeuraLoc-Core`
+- Package, executable, and storage stem: `neuraloc-core`
+- Windows bundle identifier: `com.neuraloc.core`
+
+The normalized machine identifiers are intentional. Human-facing documentation, application titles, repository links, and release names use `NeuraLoc-Core`.
+
 ## Product goals
 
 - Run chat, image, speech-to-text, and text-to-speech workloads locally by default.
